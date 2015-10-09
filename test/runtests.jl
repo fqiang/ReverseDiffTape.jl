@@ -1,8 +1,8 @@
-using ADOLJ
+using ReverseDiffTape 
 using Base.Test
 
 # write your own tests here
-using ADOLJ, FactCheck
+using FactCheck
 
 ## Test for forward function evaluation
 facts("Function evaluataion ") do

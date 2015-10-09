@@ -1,4 +1,4 @@
-module ADOLJ
+module ReverseDiffTape
 
 using DataStructures
 using Logging
@@ -8,7 +8,7 @@ importall Base
 # package code goes here
 function __init__()
 	Logging.configure(level=DEBUG)
-	debug("loading ADOLJ.jl")
+	debug("loading ReverseDiffTape.jl")
 end
 
 export
