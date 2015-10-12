@@ -101,9 +101,9 @@ function test3()
 end
 ```
 
-#Future works
-- At this time, only supports unary and binary operator types, <em>ie.<em> +, -, *, /, ^, sin, cos. But it can be easily extended to support more operation types. 
-- Julia's multiple dispatch idea can be applied to make the code more structured and extensible. <em>ie.<em> by dispatching the operator symbol as types. 
+#Future work
+- At this time, only supports unary and binary operator types, <em>i.e.</em>, +, -, *, /, ^, sin, cos. Later the packages will be extended to support more operation types. 
+- Julia's multiple dispatch idea can be applied to make the code more structured and extensible. <em>i.e.</em>, by dispatching the operator symbol as types. 
 
-#Reference: 
-RM Gower and MP Mello. “A new framework for the computation of Hes- sians”. In: Optimization Methods and Software 27.2 (2012), pp. 251–273. [paper](http://www.ime.unicamp.br/rel_pesq/2010/rp16-10.html)
+#References: 
+R.M. Gower and M.P. Mello. "A new framework for the computation of Hessians", Optimization Methods and Software 27-2, pp. 251–273, 2012. [paper](http://www.ime.unicamp.br/rel_pesq/2010/rp16-10.html)
