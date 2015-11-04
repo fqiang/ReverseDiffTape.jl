@@ -1,4 +1,8 @@
 
+#
+#  An NLP model from JuMP
+#
+
 using TapeInterface
 using JuMP
 using Ipopt

@@ -197,7 +197,7 @@ function reverse_hess_calc(oc::OP_TYPE, lval::Real)
 end
 
 function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
-	# @show eset
+	@show eset
 	ntype = tt[idx]
 	this_idx = idx
 	idx -= 1

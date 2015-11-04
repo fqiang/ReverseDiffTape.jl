@@ -92,7 +92,7 @@ function reverse_grad_calc(oc::OP_TYPE,lval::VV_TYPE)
 	return (val,ld)
 end
 
-function reverse_grad_1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, vvals::TV_TYPE, pvals::TV_TYPE, grad)
+function reverse_grad_1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, vvals::TV_TYPE, pvals::TV_TYPE, grad::Array{Tuple{IDX_TYPE,VV_TYPE},1})
 	# assert(length(vvals) == length(grad))
 	# debug("enter - ", adj)
 	ntype = tt[idx]
@@ -103,7 +103,8 @@ function reverse_grad_1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, 
 		vidx = tt[idx]
 		idx -= 1
 		# debug("vidx ",vidx, "  ",adj)
-		grad[vidx] += adj
+		push!(grad,(vidx,adj))
+		# grad[vidx] += adj
 	elseif(ntype == TYPE_OB)
 		dl = pop!(ss)
 		dr = pop!(ss)
@@ -198,7 +199,7 @@ function grad_structure(tt::TT_TYPE, I::Array{IDX_TYPE,1})
 	grad_struct(tt,convert(IDX_TYPE,length(tt)),I)
 end
 
-function grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, grad::Dict{IDX_TYPE,VV_TYPE}) #sparse version
+function grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, grad::Array{Tuple{IDX_TYPE,VV_TYPE},1}) #sparse version
 	ss = TV_STACK(VV_TYPE)
 	reverse_grad_0(tt,convert(IDX_TYPE,length(tt)),ss,vvals,pvals)
 	adj = 1.0

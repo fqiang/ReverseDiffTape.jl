@@ -158,10 +158,16 @@ end
 #evaluate the objective gradient on given iterate x. Results is set to g
 function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     # @show x
-    tic()
+    assert(length(g) == length(x))
     fill!(g,0.0)
-    assert(length(g) == length(x))  
-    grad_reverse(d.obj_tt,x,d.pvals,g) #dense version
+    tic()
+    grad = Array{Tuple{UInt, Float64},1}()
+    grad_reverse(d.obj_tt,x,d.pvals,grad)
+    for i=1:length(grad)
+        (idx,v) = grad[i]
+        g[idx] += v
+    end
+
     d.eval_grad_f_timer += toq()
     @show g
    
@@ -171,7 +177,7 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     
     # temp = Array{Float64,1}(length(g))
     # fill!(temp,EPS)
-    assert(g==jg)
+    assertArrayEqualEps(g,jg)
     return
 end
 
@@ -191,7 +197,7 @@ function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
 
     # temp = Array{Float64,1}(length(g))
     # fill!(temp,EPS)
-    assert(g==jg)
+    assertArrayEqualEps(g,jg)
     return
 end
 
@@ -251,37 +257,43 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     assert(length(J) == d.jac_nnz)
 
     tic()
-    g = Dict{UInt,Float64}()
+    g = Array{Tuple{UInt,Float64},1}()
     prev_row = 0
     for i = 1:1:length(d.jac_I)
         row = d.jac_I[i]
         if(row!=prev_row) 
             grad_reverse(d.constr_tt[row],x,d.pvals,g) #sparse version
         end
-
-        state = start(g)
-        while !done(g,state)
-            (col,v) = next(g,state)
-            assert(col == d.jac_J[i])
-            J[i] = v
-            i += 1
-        end
-        empty!(g)
+        prev_row = row
+        # state = start(g)
+        # while !done(g,state)
+        #     (col,v) = next(g,state)
+        #     assert(col == d.jac_J[i])
+        #     J[i] = v
+        #     i += 1
+        # end
+        # empty!(g)
     end   
+
+    for i =1:length(g)
+        (idx,v) = g[i]
+        J[i] = v
+    end
+
     d.eval_jac_g_timer += toq()
     
-    csc = sparse(d.jac_I,J,J)
+    csc = sparse(d.jac_I,d.jac_J,J)
 
 
     jJ = zeros(Float64,length(d.jd.jac_I))
     MathProgBase.eval_jac_g(d.jd,jJ,x)
-    jcsc = sparse(d.jd.jac_I,j.jd.jac_J,jJ)
+    jcsc = sparse(d.jd.jac_I,d.jd.jac_J,jJ)
 
     assert(csc.colptr == jcsc.colptr)
     assert(csc.rowval == jcsc.rowval)
     @show csc.nzval
     @show jcsc.nzval
-    assert((csc.nzval == jcsc.nzval))
+    assertArrayEqualEps(csc.nzval,jcsc.nzval)
     assert(csc.m == jcsc.m)
     assert(csc.n == jcsc.n)
 
@@ -408,6 +420,13 @@ function MathProgBase.eval_hesslag(
     # @show d.eval_hesslag_timer
     # @show d.jd.eval_hesslag_timer
     return
+end
+
+function assertArrayEqualEps(a1,a2)
+    assert(length(a1)==length(a2))
+    for i=1:length(a1)
+        assert(abs(a1[i]-a2[i])<EPS)
+    end
 end
 
 end
