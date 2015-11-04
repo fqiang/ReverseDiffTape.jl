@@ -2,6 +2,7 @@ module ReverseDiffTape
 
 using DataStructures
 using Logging
+using Calculus
 
 importall Base
 
@@ -12,12 +13,15 @@ function __init__()
 end
 
 export
+#constant
+	OP, OC_TO_OP,
 #types
-	TT_TYPE, TV_TYPE,
+	TT_TYPE, TV_TYPE, VV_TYPE, TYPE_V, TYPE_P, TYPE_OU, TYPE_OB,
 #Objects
-	AD_P, AD_V, Edge,
+	AD_P, AD_V, Edge, EdgeSet,
 #Functions
-	feval, grad_reverse, reverse_hess_ep, nzg, nzh
+	tapeBuilder, #building tape from Julia expression 
+	feval, grad_reverse, reverse_hess_ep, grad_nnz, grad_structure, hess_structure
 
 
 include("./types.jl")

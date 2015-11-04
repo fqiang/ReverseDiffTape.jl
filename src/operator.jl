@@ -1,10 +1,18 @@
 #Operator overloading function for AD types
-const OP = (:+,:-,:*,:/,:^,:sin,:cos)
-
 const B_OP_START = 1
-const B_OP_END = 5
+const OP = Array{Symbol,1}([:+,:-,:*,:/,:^])
+const OC_TO_OP = Dict{Symbol,OP_TYPE}()
+const B_OP_END = length(OP)
+const U_OP_START = B_OP_END + 1
+for (syms, exp) = symbolic_derivatives_1arg()
+	push!(OP,syms)
+end
+const U_OP_END = length(OP)
+
 for oc = B_OP_START:1:B_OP_END
 	o = OP[oc]
+	OC_TO_OP[o] = oc
+
 	# println("setup operator ",o)
 	for LT in AD_TYPES
 		for RT in AD_TYPES
@@ -87,10 +95,10 @@ for oc = B_OP_START:1:B_OP_END
 		end)
 end
 
-const U_OP_START = 6
-const U_OP_END = 7
+
 for oc = U_OP_START:1:U_OP_END
 	o = OP[oc]
+	OC_TO_OP[o] = oc
 	# println("setup operator ",o)
 	for LT in AD_TYPES
 		# println("setup ",LT)
@@ -140,4 +148,45 @@ evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)
 evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)
 evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)
 evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)
+
+
+#building tape with Julia expression
+function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
+	head = expr.head
+	if(head == :ref)
+		assert(length(expr.args) == 2)
+		vidx = expr.args[2]
+		return AD_V(tt,vidx,TYPE_V)
+	elseif(head == :call)
+		if(length(expr.args) >= 3) #as binary
+			# @show expr.args[2]
+			l = tapeBuilder(expr.args[2],tt,pvals)
+			# @show l
+			# @show expr.args[3]
+			r = tapeBuilder(expr.args[3],tt,pvals)
+			# @show r
+			ret = ReverseDiffTape.(expr.args[1])(l,r)
+			for i=4:1:length(expr.args)
+				l = tapeBuilder(expr.args[i],tt,pvals)
+				ret = ReverseDiffTape.(expr.args[1])(l,ret)
+			end
+			return ret
+		elseif(length(expr.args) == 2) #unary 
+			l = tapeBuilder(expr.args[2],tt,pvals)
+            return ReverseDiffTape.(expr.args[1])(l)
+		else
+			dump(expr)
+			assert(false)
+		end
+    else
+    	println("error !")
+    	dump(expr)
+    	assert(false)
+    end
+
+end
+
+function tapeBuilder(expr::Real, tt::TT_TYPE, pvals::TV_TYPE)
+	return AD_P(tt,pvals,expr)
+end
 

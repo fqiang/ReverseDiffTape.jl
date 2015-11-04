@@ -26,7 +26,11 @@ facts("Reverse gradient sin(a)*cos(b) ") do
 	a = AD_V(tt,vvals,1.1)
 	b = AD_V(tt,vvals,2.2)
 	c=sin(a)*cos(b)
-	grad = grad_reverse(tt,vvals,pvals)
+	grad = Array{VV_TYPE,1}(length(vvals))
+	grad_reverse(tt,vvals,pvals,grad)
+	I = Set{UInt}()
+	grad_structure(tt,I)
+	@fact length(I) --> 2
 	@fact length(grad) --> length(vvals)
 	@fact grad[1] --> cos(2.2)*cos(1.1)
 	@fact grad[2] --> sin(1.1)*(-sin(2.2))
@@ -39,7 +43,8 @@ facts("Reverse gradient a^3") do
 	a = AD_V(tt,vvals,1.1)
 	b = AD_P(tt,pvals,3)
 	c = a^b
-	grad = grad_reverse(tt,vvals,pvals)
+	grad = Array{VV_TYPE,1}(length(vvals))
+	grad_reverse(tt,vvals,pvals,grad)
 	@fact length(grad) --> length(vvals)
 	@fact grad[1] --> 3*1.1^2
 end
@@ -53,7 +58,8 @@ facts("Reverse gradient x1*x2*x3*x4") do
 	x3 = AD_V(tt,vvals,3.3)
 	x4 = AD_V(tt,vvals,4.4)
 	c = x1*x2*x3*x4
-	grad = grad_reverse(tt,vvals,pvals)
+	grad = Array{VV_TYPE,1}(length(vvals))
+	grad_reverse(tt,vvals,pvals,grad)
 	@fact length(grad) --> length(vvals)
 	@fact grad[1] --> 2.2*3.3*4.4
 	@fact grad[2] --> 1.1*3.3*4.4
@@ -70,7 +76,8 @@ facts("Reverse gradient sin(x1*x2*x3*x4)") do
 	x3 = AD_V(tt,vvals,3.3)
 	x4 = AD_V(tt,vvals,4.4)
 	c = sin(x1*x2*x3*x4)
-	grad = grad_reverse(tt,vvals,pvals)
+	grad = Array{VV_TYPE,1}(length(vvals))
+	grad_reverse(tt,vvals,pvals,grad)
 	@fact length(grad) --> length(vvals)
 	@fact grad[1] --> cos(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
 	@fact grad[2] --> cos(1.1*2.2*3.3*4.4)*1.1*3.3*4.4
@@ -88,7 +95,8 @@ facts("Reverse gradient cos(x1*x2*x3*x4)") do
 	x3 = AD_V(tt,vvals,3.3)
 	x4 = AD_V(tt,vvals,4.4)
 	c = cos(x1*x2*x3*x4)
-	grad = grad_reverse(tt,vvals,pvals)
+	grad = Array{VV_TYPE,1}(length(vvals))
+	grad_reverse(tt,vvals,pvals,grad)
 	@fact length(grad) --> length(vvals)
 	@fact grad[1] --> -sin(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
 	@fact grad[2] --> -sin(1.1*2.2*3.3*4.4)*1.1*3.3*4.4
@@ -105,7 +113,8 @@ facts("Hessian EP algorithm x1^2") do
 	x1 = AD_V(tt,vvals,1.1)
 	p2 = AD_P(tt,pvals,2)
 	c = x1^p2
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -121,7 +130,8 @@ facts("Hessian EP algorithm x1^2*x2^2") do
 	x2 = AD_V(tt,vvals,2.2)
 	p2 = AD_P(tt,pvals,2)
 	c = x1^p2*x2^p2
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -143,7 +153,8 @@ facts("Hessian EP algorithm sin(x1)") do
 	vvals = TV_TYPE()
 	x1 = AD_V(tt,vvals,1.1)
 	c = sin(x1)
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -157,7 +168,8 @@ facts("Hessian EP algorithm cos(x1)") do
 	vvals = TV_TYPE()
 	x1 = AD_V(tt,vvals,1.1)
 	c = cos(x1)
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -171,7 +183,8 @@ facts("Hessian EP algorithm x1*x2") do
 	x1 = AD_V(tt,vvals,1.1)
 	x2 = AD_V(tt,vvals,2.2)
 	c = x1*x2
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h12 = Edge(tt,1,2)
 	@fact length(eset) --> 1
 	@fact eset[h12] --> 1
@@ -185,7 +198,8 @@ facts("Hessian EP algorithm sin(x1*x2)") do
 	x1 = AD_V(tt,vvals,1.1)
 	x2 = AD_V(tt,vvals,2.2)
 	c = sin(x1*x2)
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -203,7 +217,8 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 	vvals = TV_TYPE()
 	x1 = AD_V(tt,vvals,1.1)
 	c = cos(sin(x1))
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact eset[h11] --> sin(sin(1.1))*sin(1.1) - cos(sin(1.1))*(cos(1.1)^2)
@@ -217,7 +232,8 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 	x1 = AD_V(tt,vvals,1.1)
 	x2 = AD_V(tt,vvals,2.2)
 	c = cos(sin(x1*x2))
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 3
 	@fact eset[h11] --> roughly(2.2^2*sin(sin(1.1*2.2))*sin(1.1*2.2)-2.2^2*cos(sin(1.1*2.2))*cos(1.1*2.2)^2)
@@ -229,7 +245,8 @@ facts("Hessian EP algorithm x1*x1") do
 	vvals = TV_TYPE()
 	x1 = AD_V(tt,vvals,1.1)
 	c = x1*x1
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact eset[h11] --> 2
@@ -242,7 +259,8 @@ facts("Hessian EP algorithm cos(x1*x2)") do
 	x1 = AD_V(tt,vvals,1.1)
 	x2 = AD_V(tt,vvals,2.2)
 	c = cos(x1*x2)
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -267,7 +285,8 @@ facts("Hessian EP algorithm x1*x1*x2*x2") do
 	x2 = AD_V(tt,vvals,2.2)
 	p2 = AD_P(tt,pvals,2)
 	c = x1*x1*x2*x2
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -290,7 +309,8 @@ facts("Hessian EP algorithm x1*x1*x1") do
 	x1 = AD_V(tt,vvals,1.1)
 	p2 = AD_P(tt,pvals,2)
 	c = x1*x1*x1
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -307,10 +327,12 @@ facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
 	p1 = AD_P(tt, pvals, 1)
 	p2 = AD_P(tt, pvals, 2)
 	c = sin(x1)+cos(x2^p2) * p1 - x3*p2
-	eset = reverse_hess_ep(tt,vvals,pvals)
+	eset = EdgeSet()
+	reverse_hess_ep(tt,vvals,pvals,eset)
 	h11 = Edge(tt,1,1)
 	h22 = Edge(tt,2,2)
-	nzeset = nzh(tt)
+	nzeset = Set{Edge}()
+	hess_structure(tt,nzeset)
 	@fact length(nzeset) --> 2
 	@fact in(h11,nzeset)  --> true
 	@fact in(h22,nzeset)  --> true

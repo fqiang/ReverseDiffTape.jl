@@ -7,16 +7,15 @@ end
 
 function Base.isequal(e1::Edge, e2::Edge)
 	# println("isequal, ", e1, ":",e2)
-	assert(e1.tt == e2.tt)
+	# assert(e1.tt == e2.tt)  # important ! - can be on different tape if following same context
 	return (e1.lidx == e2.lidx && e1.ridx == e2.ridx) || (e1.lidx == e2.ridx && e1.ridx == e2.lidx)
 end
 
 function Base.hash(e::Edge)
-	v = ""
 	if e.lidx > e.ridx
-		v = string(e.lidx,e.ridx)
+		v = (e.lidx,e.ridx)
 	else
-		v = string(e.ridx,e.lidx)
+		v = (e.ridx,e.lidx)
 	end
 	return hash(v)
 end
@@ -137,38 +136,41 @@ function reverse_hess_ep0(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TY
 end
 
 function reverse_hess_calc(oc::OP_TYPE, lval::Real, rval::Real)
-	val;hl;hll;hrr;hlr = NaN
-	val = evaluate(OP[oc],lval,rval)
+	hl = NaN
+	hll = NaN
+	hrr = NaN
+	hlr = NaN
+	val = evaluate(OP[oc],lval,rval)::VV_TYPE
 	if(OP[oc]==:+)
-		hl = 1
-		hr = 1
-		hll = 0
-		hrr = 0
-		hlr = 0
+		hl = 1.0
+		hr = 1.0
+		hll = 0.0
+		hrr = 0.0
+		hlr = 0.0
 	elseif(OP[oc]==:-)
-		hl = 1
-		hr = -1
-		hll = 0
-		hrr = 0
-		hlr = 0
+		hl = 1.0
+		hr = -1.0
+		hll = 0.0
+		hrr = 0.0
+		hlr = 0.0
 	elseif(OP[oc]==:*)
 		hl = rval
 		hr = lval
-		hll = 0
-		hrr = 0
-		hlr = 1
+		hll = 0.0
+		hrr = 0.0
+		hlr = 1.0
 	elseif(OP[oc]==:/)
 		hl = 1/rval
 		hr = -lval/(rval^2)
-		hll = 0
+		hll = 0.0
 		hrr = 2*lval/(rval^3)
 		hlr = -1/(rval^2)
 	elseif(OP[oc]==:^)
 		hl = rval*(lval^(rval-1))
-		hr = 0
+		hr = 0.0
 		hll = rval*(rval-1)*(lval^(rval-2))
-		hrr = 0
-		hlr = 0
+		hrr = 0.0
+		hlr = 0.0
 	else
 		assert(false)
 	end
@@ -178,8 +180,9 @@ end
 
 
 function reverse_hess_calc(oc::OP_TYPE, lval::Real)
-	val;hl;hll = NaN
-	val = evaluate(OP[oc],lval)
+	hl  = NaN
+	hll = NaN
+	val = evaluate(OP[oc],lval)::Float64
 	if(OP[oc]==:sin)
 		hl = cos(lval)
 		hll = -sin(lval)
@@ -194,6 +197,7 @@ function reverse_hess_calc(oc::OP_TYPE, lval::Real)
 end
 
 function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
+	# @show eset
 	ntype = tt[idx]
 	this_idx = idx
 	idx -= 1
@@ -211,6 +215,8 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 
 		state = start(eset)
 		while !done(eset,state)
+			# @show state
+			# @show eset
 			(e,state) = next(eset,state)
 			if(isEndPointOnEdge(e,this_idx))
 				if(isSelfEdge(e))
@@ -281,8 +287,7 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 	end
 end
 
-function hess_nz1(eset::Set{Edge})
-	veset = Set{Edge}()
+function hess_nz1(eset::Set{Edge},veset::Set{Edge})
 	state = start(eset)
 	while !done(eset,state)
 		(e,state) = next(eset,state)
@@ -297,7 +302,6 @@ function hess_nz1(eset::Set{Edge})
 		ve = Edge(e.tt,lvidx,rvidx)
 		push!(veset,ve)
 	end
-	return veset
 end
 
 function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, eset::EdgeSet)
@@ -443,8 +447,8 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 end
 
 
-function reverse_hess_ep2(eset::EdgeSet)
-	veset = EdgeSet()
+function reverse_hess_ep2(eset::EdgeSet,factor::VV_TYPE, veset::EdgeSet)
+	# veset = EdgeSet()
 	state = start(eset)
 	while !done(eset,state)
 		(pair, state) = next(eset, state)
@@ -464,29 +468,31 @@ function reverse_hess_ep2(eset::EdgeSet)
 		# println("reverse_hess_ep2 - adding (",lvidx,",",rvidx,") = ",w)
 		ve = Edge(e.tt,lvidx,rvidx)
 		if(!haskey(veset,ve))
-			veset[ve] = w
+			veset[ve] = w*factor
 		else
-			veset[ve] += w
+			veset[ve] += w*factor
 		end
 	end
 	return veset
 end
 
 #Interface function
-function nzh(tt::TT_TYPE)
+function hess_structure(tt::TT_TYPE, veset::Set{Edge})
 	eset = Set{Edge}()
 	hess_nz(tt, convert(IDX_TYPE,length(tt)), eset)
-	veset = hess_nz1(eset)
+	hess_nz1(eset,veset)
 end
 
+function reverse_hess_ep(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, veset::EdgeSet)
+	reverse_hess_ep(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, 1.0, veset::EdgeSet)
+end
 
-function reverse_hess_ep(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE)
+function reverse_hess_ep(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, factor::VV_TYPE, veset::EdgeSet)
 	ss = TV_STACK(VV_TYPE)
 	reverse_hess_ep0(tt,convert(IDX_TYPE,length(tt)),ss,vvals,pvals)
 	adj = 1.0
 	eset = EdgeSet()
 	reverse_hess_ep1(tt,convert(IDX_TYPE,length(tt)),ss,adj,eset)
 	assert(isempty(ss) == true)
-	veset = reverse_hess_ep2(eset)
-	return veset
+	reverse_hess_ep2(eset,factor,veset)
 end
