@@ -204,7 +204,7 @@ function grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, grad::Array{Tup
 	reverse_grad_0(tt,convert(IDX_TYPE,length(tt)),ss,vvals,pvals)
 	adj = 1.0
 	reverse_grad_1(tt,convert(IDX_TYPE,length(tt)),ss,adj,vvals,pvals,grad)
-	@show grad
+	# @show grad
 end
 
 function grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, grad::TV_TYPE)  #dense version
@@ -212,5 +212,9 @@ function grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE, grad::TV_TYPE) 
 	ss = TV_STACK(VV_TYPE)
 	reverse_grad_0(tt,convert(IDX_TYPE,length(tt)),ss,vvals,pvals)
 	adj = 1.0
-	reverse_grad_1(tt,convert(IDX_TYPE,length(tt)),ss,adj,vvals,pvals,grad)
+	g = Array{Tuple{IDX_TYPE,VV_TYPE},1}()
+	reverse_grad_1(tt,convert(IDX_TYPE,length(tt)),ss,adj,vvals,pvals,g)
+	for (i,v) in g
+		grad[i] = v
+	end
 end

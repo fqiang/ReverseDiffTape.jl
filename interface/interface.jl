@@ -169,11 +169,11 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     end
 
     d.eval_grad_f_timer += toq()
-    @show g
+    # @show g
    
     jg = Array{Float64,1}(length(x))
     MathProgBase.eval_grad_f(d.jd,jg,x)
-    @show jg
+    # @show jg
     
     # temp = Array{Float64,1}(length(g))
     # fill!(temp,EPS)
@@ -203,7 +203,7 @@ end
 
 
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
-    @show "MathProgBase.jac_structure"
+    # @show "MathProgBase.jac_structure"
     if(d.jac_nnz != -1) 
         return d.jac_I, d.jac_J
     end
@@ -235,10 +235,10 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     # @show jI
     # @show jJ
 
-    @show csc
-    @show jcsc
-    @show csc.colptr
-    @show jcsc.colptr
+    # @show csc
+    # @show jcsc
+    # @show csc.colptr
+    # @show jcsc.colptr
     assert(csc.colptr == jcsc.colptr)
     assert(csc.rowval == jcsc.rowval)
     assert(csc.m == jcsc.m)
@@ -291,8 +291,8 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
 
     assert(csc.colptr == jcsc.colptr)
     assert(csc.rowval == jcsc.rowval)
-    @show csc.nzval
-    @show jcsc.nzval
+    # @show csc.nzval
+    # @show jcsc.nzval
     assertArrayEqualEps(csc.nzval,jcsc.nzval)
     assert(csc.m == jcsc.m)
     assert(csc.n == jcsc.n)
@@ -315,7 +315,7 @@ function MathProgBase.eval_hesslag_prod(
 end
 
 function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
-    @show "MathProgBase.hesslag_structure" 
+    # @show "MathProgBase.hesslag_structure" 
     if(d.laghess_nnz)
         return d.laghess_I, d.laghess_J        
     end
@@ -323,14 +323,12 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     J = Array{Int,1}()
 
     veset = Set{Edge}()
-    @show "here"
-    @show veset 
+    println("obj ",MathProgBase.obj_expr(d.jd))
     hess_structure(d.obj_tt,veset)
-    # @show veset
 
     for i=1:d.numConstr
+        println(i," ",MathProgBase.constr_expr(d.jd,i))
         hess_structure(d.constr_tt[i],veset)
-        # @show i, veset
     end
     
     state = start(veset)
@@ -343,25 +341,25 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     assert(length(I) == length(J))
     V = ones(Float64,length(I))
     csc = sparse(I,J,V)
-    @show I
-    @show J
+    # @show I
+    # @show J
 
 
     (jI, jJ) = MathProgBase.hesslag_structure(d.jd)
     assert(length(jI) == length(jJ))
     jV = ones(Float64,length(jI))
     jcsc = sparse(jI,jJ,jV)
-    @show jI
-    @show jJ
+    # @show jI
+    # @show jJ
 
-    @show csc
-    @show jcsc
-    @show csc.colptr
-    @show jcsc.colptr
-    assert(csc.colptr == jcsc.colptr)
-    assert(csc.rowval == jcsc.rowval)
-    assert(csc.m == jcsc.m)
-    assert(csc.n == jcsc.n)
+    # @show csc
+    # @show jcsc
+    # @show csc.colptr
+    # @show jcsc.colptr
+    # assert(csc.colptr == jcsc.colptr)
+    # assert(csc.rowval == jcsc.rowval)
+    # assert(csc.m == jcsc.m)
+    # assert(csc.n == jcsc.n)
     
     d.laghess_nnz = true
     d.laghess_I = I

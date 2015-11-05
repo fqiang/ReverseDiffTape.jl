@@ -70,24 +70,29 @@ function Base.show(io::IO, eset::EdgeSet)
 	end
 end
 
-function createEdge(eset::EdgeSet, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE, w::VV_TYPE=0.0)
+function createEdge(tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
 	e = Edge(tt,lidx,ridx)
-	# println("create edge: ",e)
-	if(!haskey(eset,e))
-		# println("create edge: ",e)
-		eset[e] = w
-	else
-		# println("already exist: ",e)
-	end
 	return e
 end
 
-function createEdge(eset::Set{Edge}, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
-	e = Edge(tt,lidx,ridx)
-	# println("create edge: ",e)
-	push!(eset,e)
-	return e
-end
+# function createEdge(eset::EdgeSet, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE, w::VV_TYPE=0.0)
+# 	e = Edge(tt,lidx,ridx)
+# 	# println("create edge: ",e)
+# 	if(!haskey(eset,e))
+# 		# println("create edge: ",e)
+# 		eset[e] = w
+# 	else
+# 		# println("already exist: ",e)
+# 	end
+# 	return e
+# end
+
+# function createEdge(eset::Set{Edge}, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
+# 	e = Edge(tt,lidx,ridx)
+# 	# println("create edge: ",e)
+# 	push!(eset,e)
+# 	return e
+# end
 
 function reverse_hess_ep0(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
 	assert(idx != 0)
@@ -197,7 +202,7 @@ function reverse_hess_calc(oc::OP_TYPE, lval::Real)
 end
 
 function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
-	@show eset
+	# @show eset
 	ntype = tt[idx]
 	this_idx = idx
 	idx -= 1
@@ -206,6 +211,7 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 	elseif(ntype == TYPE_V)
 		#nothing
 	elseif(ntype == TYPE_OB)
+		# @show "TYPE_OB"
 		oc = tt[idx]
 		idx -= 1 #skip oc
 		ridx = tt[idx]
@@ -213,48 +219,74 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 		lidx = tt[idx]
 		idx -= 1
 
+		deset = Set{Edge}()
+		aeset = Set{Edge}()
+		
+		#pushing
 		state = start(eset)
+		# i = 0
 		while !done(eset,state)
 			# @show state
 			# @show eset
+			# i += 1
+			# println("iter ",i," - length ",length(eset))
 			(e,state) = next(eset,state)
 			if(isEndPointOnEdge(e,this_idx))
 				if(isSelfEdge(e))
-					e1 = createEdge(eset,tt,lidx,ridx)
-					e2 = createEdge(eset,tt,lidx,lidx)
-					e3 = createEdge(eset,tt,ridx,ridx)
+					e1 = createEdge(tt,lidx,ridx)
+					e2 = createEdge(tt,lidx,lidx)
+					e3 = createEdge(tt,ridx,ridx)
+					push!(aeset, e1)
+					push!(aeset, e2)
+					push!(aeset, e3)
 				else
 					oidx = e.lidx == this_idx?e.ridx:e.lidx
-					e1 = createEdge(eset,tt,lidx,oidx)
-					e2 = createEdge(eset,tt,ridx,oidx)
+					e1 = createEdge(tt,lidx,oidx)
+					e2 = createEdge(tt,ridx,oidx)
+					push!(aeset, e1)
+					push!(aeset, e2)
 				end
-				delete!(eset,e)
+				# println("before delete iter",i," - length ",length(eset))
+				# eset = delete!(eset,e)
+				# println("after delete iter ",i," - length ",length(eset))
+				push!(deset,e)
 			end
 		end
-
+		setdiff!(eset, deset)  #remove deleted edge
+		
 		#creating
 		if(OP[oc] == :+ || OP[oc] == :-)
 			#do nothing for linear operator
 		elseif(OP[oc] == :*)
-			e1 = createEdge(eset,tt,lidx,ridx)
+			e1 = createEdge(tt,lidx,ridx)
+			push!(aeset,e1)
 		elseif(OP[oc] == :/)
-			e1 = createEdge(eset,tt,lidx,ridx)
-			e3 = createEdge(eset,tt,ridx,ridx)
+			e1 = createEdge(tt,lidx,ridx)
+			e3 = createEdge(tt,ridx,ridx)
+			push!(aeset,e1)
+			push!(aeset,e3)
 		elseif(OP[oc] == :^)
-			e1 = createEdge(eset,tt,lidx,ridx)
-			e2 = createEdge(eset,tt,lidx,lidx)
-			e3 = createEdge(eset,tt,ridx,ridx)
+			e1 = createEdge(tt,lidx,ridx)
+			e2 = createEdge(tt,lidx,lidx)
+			e3 = createEdge(tt,ridx,ridx)
+			push!(aeset,e1)
+			push!(aeset,e2)
+			push!(aeset,e3)
 		else
 			assert(false);
 		end
+		union!(eset, aeset)  #ading pushed edges and created edges
 
 		hess_nz(tt,lidx,eset)
 		hess_nz(tt,ridx,eset)
 	elseif(ntype == TYPE_OU)
+		# @show "TYPE_OU"
 		oc = tt[idx]
 		idx -= 1 #skip oc
 		lidx = tt[idx]
 
+		deset = Set{Edge}()
+		aeset = Set{Edge}()
 		#pushing
 		state = start(eset)
 		while !done(eset,state)
@@ -262,24 +294,30 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 			if(isEndPointOnEdge(e,this_idx))
 				if(isSelfEdge(e))
 					#case 2
-					e2 = createEdge(eset,tt,lidx,lidx)
+					e2 = createEdge(tt,lidx,lidx)
+					push!(aeset,e2)
 				else
 					#case 1, 3
 					oidx = e.lidx == this_idx? e.ridx:e.lidx
-					e1 = createEdge(eset,tt,lidx,oidx)
+					e1 = createEdge(tt,lidx,oidx)
+					push!(aeset,e1)
 				end
-				delete!(eset, e)
+				# delete!(eset, e)
+				push!(deset,e)
 			end
 		end
-
+		setdiff!(eset,deset)  #remove deleted edge
 		#creating
 		if(OP[oc]==:sin)
-			e1 = createEdge(eset,tt,lidx,lidx)
+			e1 = createEdge(tt,lidx,lidx)
+			push!(aeset,e1)
 		elseif (OP[oc] == :cos)
-			e1 = createEdge(eset,tt,lidx,lidx)
+			e1 = createEdge(tt,lidx,lidx)
+			push!(aeset,e1)
 		else
 			assert(false)
 		end
+		union!(eset,aeset) #adding pushed edges and created edges
 
 		hess_nz(tt,lidx,eset)
 	else
@@ -287,7 +325,9 @@ function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
 	end
 end
 
+
 function hess_nz1(eset::Set{Edge},veset::Set{Edge})
+	# println("before hess_nz1", eset)
 	state = start(eset)
 	while !done(eset,state)
 		(e,state) = next(eset,state)
@@ -300,8 +340,10 @@ function hess_nz1(eset::Set{Edge},veset::Set{Edge})
 		lvidx = e.tt[lidx]
 		rvidx = e.tt[ridx]
 		ve = Edge(e.tt,lvidx,rvidx)
+		# println("hess_nz1 - make edge ",lvidx," -- ",rvidx)
 		push!(veset,ve)
 	end
+	# println("after hess_nz1", veset)
 end
 
 function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, eset::EdgeSet)
@@ -331,6 +373,9 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 		idx -= 1
 		# lt = tt[lidx]
 		
+		deset = Set{Edge}()
+		aeset = EdgeSet()
+
 		#pushing
 		state = start(eset)
 		# println("binary op before pushing - eset(",length(eset),")")
@@ -341,22 +386,32 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 			if(isEndPointOnEdge(e,this_idx))
 				if(isSelfEdge(e))
 					#case 2
-					e1 = createEdge(eset,tt,lidx,ridx)
-					e2 = createEdge(eset,tt,lidx,lidx)
-					e3 = createEdge(eset,tt,ridx,ridx)
-					eset[e1] += (hl*hr*w);
-					eset[e2] += (hl*hl*w);
-					eset[e3] += (hr*hr*w);
+					e1 = createEdge(tt,lidx,ridx)
+					w1 = hl*hr*w
+					e2 = createEdge(tt,lidx,lidx)
+					w2 = hl*hl*w
+					e3 = createEdge(tt,ridx,ridx)
+					w3 = hr*hr*w
+					aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+					aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
+					aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
 				else
 					#case 1 , 3
 					oidx = e.lidx == this_idx? e.ridx: e.lidx
-					e1 = createEdge(eset,tt,lidx,oidx)
-					e2 = createEdge(eset,tt,ridx,oidx)
-					e1.lidx == e1.ridx? eset[e1] += (2*hl*w): eset[e1] += (hl*w)
-					e2.lidx == e2.ridx? eset[e2] += (2*hr*w): eset[e2] += (hr*w)
+					e1 = createEdge(tt,lidx,oidx)
+					e2 = createEdge(tt,ridx,oidx)
+					w1 = e1.lidx == e1.ridx? (2*hl*w): (hl*w)
+					w2 = e2.lidx == e2.ridx? (2*hr*w): (hr*w)
+					aeset[e1] = haskey(aeset,e1)? aeset[e1]+w1:w1
+					aeset[e2] = haskey(aeset,e2)? aeset[e2]+w2:w2
 				end
-				delete!(eset,e)
+				# delete!(eset,e)
+				push!(deset,e)
 			end
+		end
+
+		for k in deset  #delete the pushed edges
+			delete!(eset,k)
 		end
 		# println("binary op after pushing - eset(",length(eset),")")
 		# println("before remove set rmv(",length(rmv),") - eset(",length(eset),")")
@@ -367,26 +422,42 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 		if(OP[oc] == :+ || OP[oc] == :-)
 			#do nothing for linear operator
 		elseif(OP[oc] == :*)
-			e1 = createEdge(eset,tt,lidx,ridx)
-			# e2 = createEdge(eset,tt,ridx,lidx)
-			eset[e1] += (adj*hlr)
-			# eset[e2] += (adj*hlr)
+			e1 = createEdge(tt,lidx,ridx)
+			w1 = adj*hlr
+			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+			# eset[e1] += (adj*hlr)
 		elseif(OP[oc] == :/)
-			e1 = createEdge(eset,tt,lidx,ridx)
-			e3 = createEdge(eset,tt,ridx,ridx)
-			eset[e1] += (adj*hlr)
-			eset[e3] += (adj*hrr)
+			e1 = createEdge(tt,lidx,ridx)
+			w1 = adj*hlr
+			e3 = createEdge(tt,ridx,ridx)
+			w3 = adj*hrr
+			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
+			# eset[e1] += (adj*hlr)
+			# eset[e3] += (adj*hrr)
 		elseif(OP[oc] == :^)
-			e1 = createEdge(eset,tt,lidx,ridx)
-			e2 = createEdge(eset,tt,lidx,lidx)
-			e3 = createEdge(eset,tt,ridx,ridx)
-			eset[e1] += (adj*hlr)
-			eset[e2] += (adj*hll)
-			eset[e3] += (adj*hrr)
+			e1 = createEdge(tt,lidx,ridx)
+			w1 = adj*hlr
+			e2 = createEdge(tt,lidx,lidx)
+			w2 = adj*hll
+			e3 = createEdge(tt,ridx,ridx)
+			w3 = adj*hrr
+			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+			aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
+			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
+			# eset[e1] += (adj*hlr)
+			# eset[e2] += (adj*hll)
+			# eset[e3] += (adj*hrr)
 		else
 			assert(false);
 		end
 		
+		for (k,v) in aeset  #adding the pushed and created edges
+			# println("reverse_hess_ep1 - add, ",k," weight ",v)
+			eset[k] = haskey(eset,k)?eset[k]+v:v
+			# @show eset
+		end
+
 		#adjoint
 		ladj = adj*hl;
 		radj = adj*hr;
@@ -403,6 +474,9 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 		lidx = tt[idx]
 		idx -= 1
 
+		deset = Set{Edge}()
+		aeset = EdgeSet()
+
 		#pushing
 		state = start(eset)
 		while !done(eset,state)
@@ -412,27 +486,43 @@ function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE
 			if(isEndPointOnEdge(e,this_idx))
 				if(isSelfEdge(e))
 					#case 2
-					e2 = createEdge(eset,tt,lidx,lidx)
-					eset[e2] += hl*hl*w
+					e2 = createEdge(tt,lidx,lidx)
+					w2 = hl*hl*w
+					aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
+					# eset[e2] += hl*hl*w
 				else
 					#case 1, 3
 					oidx = e.lidx == this_idx? e.ridx:e.lidx
-					e1 = createEdge(eset,tt,lidx,oidx)
-					e1.lidx == e1.ridx? eset[e1] += 2*hl*w: eset[e1] += hl*w
+					e1 = createEdge(tt,lidx,oidx)
+					w1 = e1.lidx == e1.ridx? 2*hl*w: hl*w
+					aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
 				end
-				delete!(eset, e)
+				# delete!(eset, e)
+				push!(deset,e)
 			end
+		end
+
+		for k in deset  #delete the pushed edges
+			delete!(eset,k)
 		end
 
 		#creating
 		if(OP[oc]==:sin)
-			e1 = createEdge(eset,tt,lidx,lidx)
-			eset[e1] += (adj*hll)
+			e1 = createEdge(tt,lidx,lidx)
+			w1 = adj*hll
+			# eset[e1] += (adj*hll)
+			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
 		elseif (OP[oc] == :cos)
-			e1 = createEdge(eset,tt,lidx,lidx)
-			eset[e1] += (adj*hll)
+			e1 = createEdge(tt,lidx,lidx)
+			w1 = adj*hll
+			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+			# eset[e1] += (adj*hll)
 		else
 			assert(false)
+		end
+
+		for (k,v) in aeset  #adding the pushed and created edges
+			eset[k] = haskey(eset,k)?eset[k]+v:v
 		end
 
 		#adjoint
@@ -449,6 +539,7 @@ end
 
 function reverse_hess_ep2(eset::EdgeSet,factor::VV_TYPE, veset::EdgeSet)
 	# veset = EdgeSet()
+	# @show eset
 	state = start(eset)
 	while !done(eset,state)
 		(pair, state) = next(eset, state)
@@ -467,12 +558,15 @@ function reverse_hess_ep2(eset::EdgeSet,factor::VV_TYPE, veset::EdgeSet)
 		end
 		# println("reverse_hess_ep2 - adding (",lvidx,",",rvidx,") = ",w)
 		ve = Edge(e.tt,lvidx,rvidx)
+		# println("reverse_hess_ep2 - make edge ",lvidx," -- ",rvidx)
+
 		if(!haskey(veset,ve))
 			veset[ve] = w*factor
 		else
 			veset[ve] += w*factor
 		end
 	end
+	# @show veset
 	return veset
 end
 
