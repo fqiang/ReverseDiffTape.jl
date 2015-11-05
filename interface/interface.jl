@@ -34,11 +34,18 @@ end
 
 function MathProgBase.status(m::TapeData)
     # @show m.evaluator
-    @show m.evaluator.eval_hesslag_timer
-    @show m.evaluator.jd.eval_hesslag_timer
-    @show m.evaluator.eval_hesslag_timer
-    @show m.evaluator.jd.eval_hesslag_timer
-
+    # @show m.evaluator.eval_f_timer
+    # @show m.evaluator.eval_g_timer
+    # @show m.evaluator.eval_grad_f_timer
+    # @show m.evaluator.eval_jac_g_timer
+    # @show m.evaluator.eval_hesslag_timer
+    
+    # @show m.evaluator.jd.eval_f_timer
+    # @show m.evaluator.jd.eval_g_timer
+    # @show m.evaluator.jd.eval_grad_f_timer
+    # @show m.evaluator.jd.eval_jac_g_timer
+    # @show m.evaluator.jd.eval_hesslag_timer
+    
     return MathProgBase.status(m.m)
 end
 
@@ -60,10 +67,16 @@ end
 
 function MathProgBase.loadnonlinearproblem!(m::TapeData, numVar, numConstr, l, u, lb, ub, sense, jd::MathProgBase.AbstractNLPEvaluator)
     println("TapeData - loadnonlinearproblem")
-    @show jd
-    #m.evaluator = jd
-    tape_evaluator = TapeNLPEvaluator(jd,numVar,numConstr)
-    m.evaluator = tape_evaluator
+    # if(jd.eval_f_timer>0.0)
+    #     @show typeof(m.evaluator)
+    #     @show m.evaluator
+    #     tape_evaluator::MathProgBase.SolverInterface.AbstractNLPEvaluator = m.evaluator
+    #     println("tape_evaluator arleady set")
+    # else
+        tape_evaluator = TapeNLPEvaluator(jd,numVar,numConstr)
+        m.evaluator = tape_evaluator
+        println("tape_evaluator is set")
+    # end
     MathProgBase.loadnonlinearproblem!(m.m,numVar,numConstr,l,u,lb,ub,sense,tape_evaluator)
 end
 
@@ -99,31 +112,66 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     eval_jac_g_timer::Float64
     eval_hesslag_timer::Float64
 
+    jeval_f_timer::Float64
+    jeval_g_timer::Float64
+    jeval_grad_f_timer::Float64
+    jeval_jac_g_timer::Float64
+    jeval_hesslag_timer::Float64
+
+
 end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr)
- 	return TapeNLPEvaluator(nlpe, numVar,numConstr,TV_TYPE(), TT_TYPE(), Array{TT_TYPE,1}(), Array{Int,1}(), Array{Int,1}(),-1,Array{Int,1}(), Array{Int,1}(),false, 0, 0, 0, 0, 0)
+ 	return TapeNLPEvaluator(nlpe, 
+        numVar,numConstr,TV_TYPE(), TT_TYPE(), 
+        Array{TT_TYPE,1}(), 
+        Array{Int,1}(), Array{Int,1}(),-1,
+        Array{Int,1}(), Array{Int,1}(),false, 
+        0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0)
 end
 
 function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector{Symbol})
 	println("TapeNLPEvaluator - initialize")
-	# @show requested_features
+	@show d.eval_f_timer
+    @show d.eval_grad_f_timer
+    @show d.eval_g_timer
+    @show d.eval_jac_g_timer 
+    @show d.eval_hesslag_timer
 
-	jd = d.jd
-	MathProgBase.initialize(jd,[:Grad,:Jac,:ExprGraph,:Hess])
+    jd = d.jd
+    MathProgBase.initialize(jd,[:Grad,:Jac,:ExprGraph,:Hess])
+    @show jd.eval_f_timer
+    @show jd.eval_grad_f_timer
+    @show jd.eval_g_timer
+    @show jd.eval_jac_g_timer 
+    @show jd.eval_hesslag_timer
+
+    # if(d.eval_f_timer > 0.0)
+    #     println("return - already init")
+    #     return  #already initialized
+    # end
+    # @show requested_features
+
+	
+    # @show jd.eval_f_timer
+    # @show jd.eval_grad_f_timer
+    # @show jd.eval_g_timer
+    # @show jd.eval_jac_g_timer 
+    # @show jd.eval_hesslag_timer
 
 	#let's building up the tape
     tic()
 
 	objexpr = MathProgBase.obj_expr(jd)
-    @show objexpr
+    # @show objexpr
    
 	assert(length(d.pvals) == 0)  ## assume no values in pvals
 	tapeBuilder(objexpr,d.obj_tt,d.pvals)
 
     for i =1:1:d.numConstr
 	   conexpr = MathProgBase.constr_expr(jd,i)
-       @show conexpr.args[1]
+       # @show conexpr.args[1]
        tt = TT_TYPE()
        tapeBuilder(conexpr.args[1],tt,d.pvals)
        push!(d.constr_tt,tt)
@@ -134,11 +182,18 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     println("TapeNLPEvaluator - initialize takes ",tprep)
     
     # reset timers
-    d.eval_f_timer = 0
-    d.eval_grad_f_timer = 0
-    d.eval_g_timer = 0
-    d.eval_jac_g_timer = 0
-    d.eval_hesslag_timer = 0
+    d.eval_f_timer = 0.0
+    d.eval_grad_f_timer = 0.0
+    d.eval_g_timer = 0.0
+    d.eval_jac_g_timer = 0.0
+    d.eval_hesslag_timer = 0.0
+
+    d.jeval_f_timer = 0.0
+    d.jeval_grad_f_timer = 0.0
+    d.jeval_g_timer = 0.0
+    d.jeval_jac_g_timer = 0.0
+    d.jeval_hesslag_timer = 0.0
+
     nothing
 end
 
@@ -150,7 +205,9 @@ function MathProgBase.eval_f(d::TapeNLPEvaluator, x)
     v = feval(d.obj_tt,x,d.pvals)
     d.eval_f_timer += toq()
     
+    tic()
     jv = MathProgBase.eval_f(d.jd,x)
+    d.jeval_f_timer += toq()
     assert(jv == v)
     return v
 end
@@ -171,8 +228,10 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     d.eval_grad_f_timer += toq()
     # @show g
    
+    tic()
     jg = Array{Float64,1}(length(x))
     MathProgBase.eval_grad_f(d.jd,jg,x)
+    d.jeval_grad_f_timer += toq()
     # @show jg
     
     # temp = Array{Float64,1}(length(g))
@@ -191,8 +250,10 @@ function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     d.eval_g_timer += toq()
     # @show g
 
+    tic()
     jg = Array{Float64,1}(length(g))
     MathProgBase.eval_g(d.jd,jg,x)
+    d.jeval_g_timer += toq()
     # @show jg
 
     # temp = Array{Float64,1}(length(g))
@@ -265,30 +326,25 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
             grad_reverse(d.constr_tt[row],x,d.pvals,g) #sparse version
         end
         prev_row = row
-        # state = start(g)
-        # while !done(g,state)
-        #     (col,v) = next(g,state)
-        #     assert(col == d.jac_J[i])
-        #     J[i] = v
-        #     i += 1
-        # end
-        # empty!(g)
     end   
 
     for i =1:length(g)
         (idx,v) = g[i]
         J[i] = v
     end
-
     d.eval_jac_g_timer += toq()
     
+
     csc = sparse(d.jac_I,d.jac_J,J)
 
-
+    tic()
     jJ = zeros(Float64,length(d.jd.jac_I))
     MathProgBase.eval_jac_g(d.jd,jJ,x)
+    d.jeval_jac_g_timer += toq()
+
     jcsc = sparse(d.jd.jac_I,d.jd.jac_J,jJ)
 
+    
     assert(csc.colptr == jcsc.colptr)
     assert(csc.rowval == jcsc.rowval)
     # @show csc.nzval
@@ -323,11 +379,11 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     J = Array{Int,1}()
 
     veset = Set{Edge}()
-    println("obj ",MathProgBase.obj_expr(d.jd))
+    # println("obj ",MathProgBase.obj_expr(d.jd))
     hess_structure(d.obj_tt,veset)
 
     for i=1:d.numConstr
-        println(i," ",MathProgBase.constr_expr(d.jd,i))
+        # println(i," ",MathProgBase.constr_expr(d.jd,i))
         hess_structure(d.constr_tt[i],veset)
     end
     
@@ -400,20 +456,24 @@ function MathProgBase.eval_hesslag(
     # 
     d.eval_hesslag_timer += toq()
 
-    csc = sparse(d.laghess_I,d.laghess_J,H)
+    # csc = sparse(d.laghess_I,d.laghess_J,H)
     # @show csc
 
+    tic()
     jH = Array{Float64,1}(length(d.jd.hess_I))
     MathProgBase.eval_hesslag(d.jd,jH,x,obj_factor,lambda)
+    d.jeval_hesslag_timer += toq()
+
+
     # @show d.jd.hess_I
     # @show d.jd.hess_J
     # @show jH
-    jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
+    # jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
     # @show jcsc
-    assert(csc.colptr == jcsc.colptr)
-    assert(csc.rowval == jcsc.rowval)
-    assert(csc.m == jcsc.m)
-    assert(csc.n == jcsc.n)
+    # assert(csc.colptr == jcsc.colptr)
+    # assert(csc.rowval == jcsc.rowval)
+    # assert(csc.m == jcsc.m)
+    # assert(csc.n == jcsc.n)
     
     # @show d.eval_hesslag_timer
     # @show d.jd.eval_hesslag_timer

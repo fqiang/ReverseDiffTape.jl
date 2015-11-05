@@ -1,4 +1,6 @@
 
+include("interface.jl")
+
 #
 #  An NLP model from JuMP
 #
@@ -29,3 +31,6 @@ for i in 1:ni
 end
 
 solve(m)
+
+
+include("comparion.jl")

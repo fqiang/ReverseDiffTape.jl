@@ -1,6 +1,8 @@
 
 # from JuMP example/optcontrol.jl
 
+include("interface.jl")
+
 using TapeInterface
 using JuMP
 using Ipopt
@@ -27,3 +29,5 @@ for i in 1:ni
 end
 
 solve(m)
+
+include("comparion.jl")
