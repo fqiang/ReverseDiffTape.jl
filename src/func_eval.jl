@@ -12,6 +12,15 @@ function evaluate(tt::TT_TYPE,idx::IDX_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
 	elseif(ntype == TYPE_V)
 		ret = vvals[tt[idx]]
 		idx -= 1
+	elseif(ntype == TYPE_OU)
+		oc = tt[idx]
+		assert(U_OP_START <= oc <= U_OP_END)
+		idx -= 1
+		lidx = tt[idx]
+		idx -= 1
+		# debug("unary before  - ",lidx)
+		(lval,idx) = evaluate(tt,lidx,vvals,pvals)
+		ret = evaluate(OP[oc],lval)
 	elseif(ntype == TYPE_OB)
 		oc = tt[idx]
 		assert(B_OP_START<= oc <= B_OP_END)
@@ -26,15 +35,9 @@ function evaluate(tt::TT_TYPE,idx::IDX_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
 		(lval,idx) = evaluate(tt,lidx,vvals,pvals)
 		ret = evaluate(OP[oc],lval,rval)
 	else
-		oc = tt[idx]
-		assert(U_OP_START <= oc <= U_OP_END)
-		idx -= 1
-		lidx = tt[idx]
-		idx -= 1
-		# debug("unary before  - ",lidx)
-		(lval,idx) = evaluate(tt,lidx,vvals,pvals)
-		ret = evaluate(OP[oc],lval)
+		assert(false)
 	end
+
 	assert(!isnan(ret))
 	# debug("exit - ",idx)
 	return ret,idx
