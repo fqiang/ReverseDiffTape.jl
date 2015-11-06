@@ -218,7 +218,7 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     assert(length(g) == length(x))
     fill!(g,0.0)
     tic()
-    grad = Array{Tuple{UInt, Float64},1}()
+    grad = Array{Tuple{Int, Float64},1}()
     grad_reverse(d.obj_tt,x,d.pvals,grad)
     for i=1:length(grad)
         (idx,v) = grad[i]
@@ -271,7 +271,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
 
     I = Array{Int, 1}()
     J = Array{Int, 1}()
-    idxes = Array{UInt,1}()
+    idxes = Array{Int,1}()
     for i=1:1:d.numConstr
         grad_structure(d.constr_tt[i],idxes)
         state = start(idxes)
@@ -318,7 +318,7 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     assert(length(J) == d.jac_nnz)
 
     tic()
-    g = Array{Tuple{UInt,Float64},1}()
+    g = Array{Tuple{Int,Float64},1}()
     prev_row = 0
     for i = 1:1:length(d.jac_I)
         row = d.jac_I[i]

@@ -28,7 +28,7 @@ facts("Reverse gradient sin(a)*cos(b) ") do
 	c=sin(a)*cos(b)
 	grad = Array{VV_TYPE,1}(length(vvals))
 	grad_reverse(tt,vvals,pvals,grad)
-	I = Array{UInt,1}()
+	I = Array{IDX_TYPE,1}()
 	grad_structure(tt,I)
 	@fact length(I) --> 2
 	@fact length(grad) --> length(vvals)

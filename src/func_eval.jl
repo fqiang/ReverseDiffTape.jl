@@ -2,10 +2,10 @@
 ## forward evaluation 
 function evaluate(tt::TT_TYPE,idx::IDX_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
 	# debug("enter - ",idx)
-	assert(idx != 0)
-	ret = NaN
+	# assert(idx != 0)
+	ret::VV_TYPE = 0.0
 	ntype = tt[idx] #type node
-	idx -= 1
+	idx = idx - 1
 	if(ntype == TYPE_P)
 		ret = pvals[tt[idx]]
 		idx -=1
@@ -43,6 +43,6 @@ end
 
 ## Interface method
 function feval(tt::TT_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
-	(val,idx) = evaluate(tt,convert(IDX_TYPE,length(tt)),vvals, pvals)
+	(val::Float64,idx) = evaluate(tt,length(tt),vvals, pvals)
 	return val
 end

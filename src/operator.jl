@@ -29,7 +29,7 @@ for oc = B_OP_START:1:B_OP_END
 							push!(tt,r.idx)
 							push!(tt,r.t)
 							ridx = length(tt)
-							this = AD_O(tt,$(oc),convert(UInt,lidx),convert(UInt,ridx))
+							this = AD_O(tt,$(oc),lidx,ridx)
 							return this
 						end
 					end)
@@ -43,7 +43,7 @@ for oc = B_OP_START:1:B_OP_END
 							push!(tt,l.t)
 							lidx = length(tt)
 							ridx = r.idx
-							this = AD_O(tt,$(oc),convert(UInt,lidx),convert(UInt,ridx))
+							this = AD_O(tt,$(oc),lidx,ridx)
 							return this
 						end
 				end)
@@ -57,7 +57,7 @@ for oc = B_OP_START:1:B_OP_END
 							push!(tt,r.idx)
 							push!(tt,r.t)
 							ridx = length(tt)
-							this = AD_O(tt,$(oc),convert(UInt,lidx),convert(UInt,ridx))
+							this = AD_O(tt,$(oc),lidx,ridx)
 							return this
 						end
 				end)
@@ -69,7 +69,7 @@ for oc = B_OP_START:1:B_OP_END
 							tt = l.tt
 							lidx = l.idx
 							ridx = r.idx
-							this = AD_O(tt,$(oc),convert(UInt,lidx),convert(UInt,ridx))
+							this = AD_O(tt,$(oc),lidx,ridx)
 							return this
 						end
 				end)			
@@ -110,7 +110,7 @@ for oc = U_OP_START:1:U_OP_END
 						push!(tt,l.idx)
 						push!(tt,l.t)
 						lidx = length(tt)
-						this = AD_O(tt,$(oc),convert(UInt,lidx))
+						this = AD_O(tt,$(oc),lidx)
 						return this
 					end
 			end)			
@@ -120,7 +120,7 @@ for oc = U_OP_START:1:U_OP_END
 					begin
 						tt = l.tt
 						lidx = l.idx
-						this = AD_O(tt,$(oc),convert(UInt,lidx))
+						this = AD_O(tt,$(oc),lidx)
 						return this
 					end
 			end)	
@@ -156,7 +156,7 @@ function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
 	if(head == :ref)
 		assert(length(expr.args) == 2)
 		vidx = expr.args[2]
-		return AD_V(tt,vidx,TYPE_V)
+		return AD_V(tt,vidx)
 	elseif(head == :call)
 		if(length(expr.args) >= 3) #as binary
 			# @show expr.args[2]
