@@ -16,12 +16,12 @@ export
 #constant
 	OP, OC_TO_OP,
 #types
-	IDX_TYPE, TT_TYPE, TV_TYPE, VV_TYPE, TYPE_V, TYPE_P, TYPE_OU, TYPE_OB,
+	IDX_TYPE, TT_TYPE, TV_TYPE, TV_STACK, VV_TYPE, TYPE_V, TYPE_P, TYPE_OU, TYPE_OB,
 #Objects
 	AD_O, AD_P, AD_V, Edge, EdgeSet,
 #Functions
 	tapeBuilder, #building tape from Julia expression 
-	feval, grad_reverse, reverse_hess_ep, grad_nnz, grad_structure, hess_structure
+	feval, grad_reverse, reverse_hess_ep, grad_structure, hess_structure
 
 
 include("./types.jl")

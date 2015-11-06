@@ -57,16 +57,16 @@ function reverse_grad_calc(oc::OP_TYPE,lval::VV_TYPE, rval::VV_TYPE)
 	val = evaluate(OP[oc],lval,rval)
 	# println("reverse_grad_calc  ",val)
 	if(OP[oc]==:+)
-		ld = 1
-		rd = 1
+		ld = 1.0
+		rd = 1.0
 	elseif(OP[oc]==:-)
-		ld = 1
-		rd = -1
+		ld = 1.0
+		rd = -1.0
 	elseif(OP[oc]==:*)
 		ld = rval
 		rd = lval
 	elseif(OP[oc]==:/)
-		ld = 1/rval
+		ld = 1.0/rval
 		rd = -lval/rval^2
 	elseif(OP[oc]==:^)
 		ld = rval*(lval^(rval-1))
@@ -132,7 +132,7 @@ function reverse_grad_1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, 
 	# debug("exit")
 end
 
-function grad_nz(tt::TT_TYPE, idx::IDX_TYPE, I::Set{IDX_TYPE})
+function grad_nz(tt::TT_TYPE, idx::IDX_TYPE, I::Set{IDX_TYPE}) #non-repeat version
 	assert(length(vvals) == length(grad))
 	# debug("enter - ", adj)
 	ntype = tt[idx]
@@ -160,7 +160,7 @@ function grad_nz(tt::TT_TYPE, idx::IDX_TYPE, I::Set{IDX_TYPE})
 	end
 end
 
-function grad_struct(tt::TT_TYPE, idx::IDX_TYPE, I::Array{IDX_TYPE,1})
+function grad_struct(tt::TT_TYPE, idx::IDX_TYPE, I::Array{IDX_TYPE,1}) #repeat version
 	# debug("enter - ", adj)
 	ntype = tt[idx]
 	idx -= 1
@@ -189,13 +189,11 @@ end
 
 
 #Interface function
-function grad_nnz(tt::TT_TYPE)
-	I = Set{IDX_TYPE}()
-	grad_nz(tt,convert(IDX_TYPE,length(tt)),nz)
-	return length(I)
+function grad_structure(tt::TT_TYPE, I::Set{IDX_TYPE}) #non repeat version
+	grad_nz(tt,convert(IDX_TYPE,length(tt)),I)
 end
 
-function grad_structure(tt::TT_TYPE, I::Array{IDX_TYPE,1})
+function grad_structure(tt::TT_TYPE, I::Array{IDX_TYPE,1})  #repeat version
 	grad_struct(tt,convert(IDX_TYPE,length(tt)),I)
 end
 

@@ -144,10 +144,10 @@ for oc = U_OP_START:1:U_OP_END
 		end)
 end
 
-evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)
-evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)
-evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)
-evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)
+evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)::Float64
+evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)::Float64
+evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)::Float64
+evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)::Float64
 
 
 #building tape with Julia expression
