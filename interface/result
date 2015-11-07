@@ -1,12 +1,7 @@
 result
 
 
-Minimization problem with:
- * 5 linear constraints
- * 5 nonlinear constraints
- * 18 variables
-Solver set to TapeInterface.Tape
-5x5 Array{Any,2}:
+Problem 1:  5 linear constraints, 5 nonlinear constraints, 18 variables
  "eval_f"        1.94525  1.82096  1.79447  1.76772
  "eval_g"        4.2491   4.15712  4.16841  4.05572
  "eval_grad_f"   2.83978  2.48913  2.54476  2.51665
@@ -14,12 +9,7 @@ Solver set to TapeInterface.Tape
  "eval_hesslag"  6.50839  5.45088  7.67526  9.3418 
 
 
-Minimization problem with:
- * 0 linear constraints
- * 2 nonlinear constraints
- * 4 variables
-Solver set to TapeInterface.Tape
-5x5 Array{Any,2}:
+Problem 2: 2 nonlinear constraints, 4 variables
  "eval_f"        11.7877   11.2034    9.7123    9.09545
  "eval_g"        14.3168   15.9628   11.5616    3.87538
  "eval_grad_f"    9.21263   9.49825   9.25624   9.69768
@@ -27,16 +17,37 @@ Solver set to TapeInterface.Tape
  "eval_hesslag"  35.8296   37.942    26.2023   29.0948 
 
 
-Minimization problem with:
- * 200 linear constraints
- * 200 nonlinear constraints
- * 603 variables
-Solver set to TapeInterface.Tape
-5x5 Array{Any,2}:
+Problem 3:  200 linear constraints, 200 nonlinear constraints, 603 variables
 "eval_f"        102.195   102.323   132.467    96.8844
  "eval_g"         43.048    50.0149   45.3837   50.1404
  "eval_grad_f"    85.7927   90.1025  109.758    93.5514
  "eval_jac_g"     33.0638   29.5334   35.9078   27.1326
  "eval_hesslag"  243.222   266.646   276.361   276.444 
 
-isdefined(Base, :__precompile__) && __precompile__()
+========================================================================
+After type fixes
+========================================================================
+
+
+Problem 1:  5 linear constraints, 5 nonlinear constraints, 18 variables
+ "eval_f"        0.832426  0.802872  0.830002   0.820076
+ "eval_g"        2.16399   2.0393    2.02481    2.0858  
+ "eval_grad_f"   3.60067   2.59955   1.22213    1.22347 
+ "eval_jac_g"    4.63477   1.38282   1.34834    1.41047 
+ "eval_hesslag"  8.05527   8.0396    8.65168   12.054 
+
+Problem 2: 2 nonlinear constraints, 4 variables
+ "eval_f"         3.33087   2.95185   3.19951   3.02573
+ "eval_g"         4.4232    3.90313   4.06785   3.89705
+ "eval_grad_f"    3.30218   3.02027   3.23686   2.99821
+ "eval_jac_g"     7.48709   7.68771   5.85059   6.20133
+ "eval_hesslag"  32.8778   30.3671   34.5052   31.0454 
+
+Problem 3:  200 linear constraints, 200 nonlinear constraints, 603 variables
+5x5 Array{Any,2}:
+ "eval_f"         36.4372   34.5935   35.3712   34.6165
+ "eval_g"         16.2015   13.1404   16.0502   13.0819
+ "eval_grad_f"    42.1994   38.6222   32.4985   39.7837
+ "eval_jac_g"     17.5728   16.178    17.5999   16.1113
+ "eval_hesslag"  300.788   290.338   312.962   286.107 
+
