@@ -158,20 +158,43 @@ function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
 		vidx = expr.args[2]
 		return AD_V(tt,vidx)
 	elseif(head == :call)
-		if(length(expr.args) >= 3) #as binary
+		if(length(expr.args) >= 3) #binary should has 3 arguments, and we should also support multiple argument such as sum/prod list
 			# @show expr.args[2]
-			l = tapeBuilder(expr.args[2],tt,pvals)
-			# @show l
-			# @show expr.args[3]
-			r = tapeBuilder(expr.args[3],tt,pvals)
-			# @show r
-			ret = ReverseDiffTape.(expr.args[1])(l,r)
-			for i=4:1:length(expr.args)
-				l = tapeBuilder(expr.args[i],tt,pvals)
-				ret = ReverseDiffTape.(expr.args[1])(l,ret)
+			op = expr.args[1]
+			assert(typeof(op)==Symbol)
+			args = Array{Placeholder,1}()
+			for i in 2:1:length(expr.args)
+				oprand = tapeBuilder(expr.args[i],tt,pvals)
+				push!(args,oprand)
 			end
-			return ret
-		elseif(length(expr.args) == 2) #unary 
+
+			idxes = Array{IDX_TYPE,1}()
+			for o in args
+				if(o.t == TYPE_P || o.t == TYPE_V)
+					push!(tt,o.idx)
+					push!(tt,o.t)
+					push!(idxes,length(tt))
+				else
+					push!(idxes,o.idx)
+				end
+			end
+			# @show op
+			return AD_O(tt,OC_TO_OP[op],idxes...)
+
+			######################### -- old code for only support binary op
+			# l = tapeBuilder(expr.args[2],tt,pvals)
+			# # @show l
+			# # @show expr.args[3]
+			# r = tapeBuilder(expr.args[3],tt,pvals)
+			# # @show r
+			# ret = ReverseDiffTape.(expr.args[1])(l,r)
+			# for i=4:1:length(expr.args)
+			# 	l = tapeBuilder(expr.args[i],tt,pvals)
+			# 	ret = ReverseDiffTape.(expr.args[1])(l,ret)
+			# end
+			# return ret
+			####################### 
+		elseif(length(expr.args) == 2) #unary has only 2 arguments
 			l = tapeBuilder(expr.args[2],tt,pvals)
             return ReverseDiffTape.(expr.args[1])(l)
 		else

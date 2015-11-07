@@ -45,18 +45,31 @@ immutable AD_O <: Placeholder
 	idx::IDX_TYPE  #index on tape
     t::Uint    #type code	 
 
-    function AD_O(tt,oc,lidx,ridx)
-    	push!(tt,lidx)
-		push!(tt,ridx)
-		push!(tt,oc)
-		push!(tt,TYPE_OB)
-    	new(tt,length(tt),TYPE_OB)
-    end
-    function AD_O(tt,oc,lidx)
-    	push!(tt,lidx)
-		push!(tt,oc)
-		push!(tt,TYPE_OU)
-    	new(tt,length(tt),TYPE_OB)
+  #   function AD_O(tt,oc,lidx,ridx)
+  #   	push!(tt,lidx)
+		# push!(tt,ridx)
+		# push!(tt,oc)
+		# push!(tt,TYPE_OB)
+  #   	new(tt,length(tt),TYPE_OB)
+  #   end
+  #   function AD_O(tt,oc,lidx)
+  #   	push!(tt,lidx)
+		# push!(tt,oc)
+		# push!(tt,TYPE_OU)
+  #   	new(tt,length(tt),TYPE_OB)
+  #   end
+    function AD_O(tt,oc,args...)
+    	# @show args
+    	num = length(args)
+    	type_c = num + 2
+    	# @show num
+    	assert(num>=1)
+    	for i in args
+    		push!(tt,i)
+    	end
+    	push!(tt,oc)
+    	push!(tt,type_c) #based on TYPE_OU + 2
+    	new(tt,length(tt),type_c)
     end
 end
 
