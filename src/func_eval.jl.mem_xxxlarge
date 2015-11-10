@@ -1,0 +1,71 @@
+        - 
+        - function forward_evaluate(tt::TT_TYPE, vals, vvals::TV_TYPE, pvals::TV_TYPE)
+        - 	# vals = Array{VV_TYPE,1}()
+        0 	idx = 1::Int
+        0 	while(idx <= length(tt))
+        - 		# @show idx
+        0 		ntype = tt[idx]
+        0 		idx += 1
+        0 		if(ntype == TYPE_P)
+        0 			v = pvals[tt[idx]]
+        0 			idx += 1
+      128 			push!(vals,v)
+        0 			idx += 1 #skip TYPE_P
+        0 		elseif(ntype == TYPE_V)
+        0 			v = vvals[tt[idx]]
+        0 			idx += 1
+   262432 			push!(vals,v)
+        0 			idx += 1 #skip TYPE_V
+        0 		elseif(ntype == TYPE_O)
+        0 			oc = tt[idx]
+        0 			idx += 1
+        0 			n = tt[idx]
+        0 			idx += 1
+        0 			idx += 1 #skip TYPE_O
+        - 
+        0 			resize!(vals,length(vals)-n+1)
+        - 			# @show v
+        0 			vals[end] = v
+        - 		end
+        - 	end
+        - 	# @show vals
+        0 	return pop!(vals)
+        - end
+        - 
+        - 
+        - function evaluate(s::Symbol, nvals, i)
+        - 	# n = length(nvals)
+        0 	if(s == :+)
+        0 		result = 0.0
+        0 		for j=i:1:length(nvals)
+        0 			result+=nvals[j]
+        - 		end
+   480016 		return result
+        - 		# return Base.sum(nvals[i:1:end])
+        0 	elseif(s == :-)
+        0 		return (-)(nvals[i],nvals[i+1])
+        0 	elseif(s == :*)
+        0 		result = nvals[i]
+        0 		for j=i+1:1:length(nvals)
+        0 			result *= nvals[j]
+        - 		end
+   320000 		return result
+        - 		# return Base.prod(nvals[i:1:end])
+        0 	elseif(s == :/)
+        0 		return (/)(nvals[i],nvals[i+1])
+        0 	elseif(s == :^)
+   320000 		return (^)(nvals[i],nvals[i+1])
+        0 	elseif(s == :sin)
+        0 		return sin(nvals[i])
+        0 	elseif(s == :cos)
+   320000 		return cos(nvals[i])
+        - 	end
+        - end
+        - 
+        - ## Interface method
+        - function feval(tt::TT_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
+    74281 	vals = Array{Float64,1}()
+        0 	val = forward_evaluate(tt, vals,vvals,pvals)
+        0 	return val
+        - end
+        - 

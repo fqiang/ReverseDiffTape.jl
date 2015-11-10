@@ -11,6 +11,7 @@ typealias TV_TYPE Array{VV_TYPE,1}
 #the AD types below
 const TYPE_V = 1	#variable node
 const TYPE_P = 2	#param node
+const TYPE_O = 3
 const TYPE_OU = 3	#unary op
 const TYPE_OB = 4  	#binary op
 
@@ -116,6 +117,6 @@ function Base.show(io::IO,m::AD_P)
 end
 
 function Base.show(io::IO,m::AD_O)
-	assert(m.t == TYPE_OU || m.t == TYPE_OB)
+	assert(m.t >= TYPE_OU )
 	print(io, "AD_O[",m.idx,"]")
 end

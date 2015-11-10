@@ -1,0 +1,215 @@
+        - 
+        - ## forward evaluation 
+        - function evaluate(tt::TT_TYPE,idx::IDX_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
+        - 	# debug("enter - ",idx)
+        - 	# assert(idx != 0)	
+        - 	ret::VV_TYPE = 0.0
+        - 	ntype = tt[idx] #type node
+        - 	idx -= 1
+        - 	if(ntype == TYPE_P)
+        - 		ret = pvals[tt[idx]]
+        - 		idx -=1
+        - 	elseif(ntype == TYPE_V)
+        - 		ret = vvals[tt[idx]]
+        - 		idx -= 1
+        - 	# elseif(ntype == TYPE_OU)
+        - 	# 	oc = tt[idx]
+        - 	# 	assert(U_OP_START <= oc <= U_OP_END)
+        - 	# 	idx -= 1
+        - 	# 	lidx = tt[idx]
+        - 	# 	idx -= 1
+        - 	# 	# debug("unary before  - ",lidx)
+        - 	# 	(lval,idx) = evaluate(tt,lidx,vvals,pvals)
+        - 	# 	ret = evaluate(OP[oc],lval)
+        - 	# elseif(ntype == TYPE_OB)
+        - 	# 	oc = tt[idx]
+        - 	# 	assert(B_OP_START<= oc <= B_OP_END)
+        - 	# 	idx -= 1
+        - 	# 	ridx = tt[idx]
+        - 	# 	idx -= 1
+        - 	# 	lidx = tt[idx]
+        - 	# 	idx -= 1
+        - 	# 	# debug("before right - ",ridx)
+        - 	# 	(rval,idx) = evaluate(tt,ridx,vvals,pvals)
+        - 	# 	# debug("before left - ",lidx)
+        - 	# 	(lval,idx) = evaluate(tt,lidx,vvals,pvals)
+        - 	# 	ret = evaluate(OP[oc],lval,rval)
+        - 	else
+        - 		num = ntype - 2
+        - 		oc = tt[idx]
+        - 		idx -= 1
+        - 		# assert(oc==1 || oc ==3) #:+ or :* symbol
+        - 		ovals = Array{VV_TYPE,1}()
+        - 		nidx = 0
+        - 		for i = 1:1:num
+        - 			oidx = tt[idx]
+        - 			idx -= 1
+        - 			(rval,nidx) = evaluate(tt,oidx,vvals,pvals)
+        - 			push!(ovals,rval)
+        - 		end
+        - 		idx = nidx
+        - 		# @show OP[oc]
+        - 		ret = evaluate(OP[oc],ovals...)
+        - 		# assert(false)
+        - 	end
+        - 
+        - 	# assert(!isnan(ret))
+        - 	# debug("exit - ",idx)
+        - 	return ret,idx
+        - end
+        - 
+        - function forward_evaluate(tt::TT_TYPE, vals, vvals::TV_TYPE, pvals::TV_TYPE)
+        - 	# vals = Array{VV_TYPE,1}()
+    74080 	idx = 1::Int
+        0 	while(idx <= length(tt))
+        0 		# @show idx
+        0 		ntype = tt[idx]
+        0 		idx += 1
+        0 		v = 0.0
+        0 		if(ntype == TYPE_P)
+        0 			@inbounds v = pvals[tt[idx]]
+        0 			idx += 1
+        0 			push!(vals,v)
+        0 			idx += 1 #skip TYPE_P
+        0 		elseif(ntype == TYPE_V)
+        0 			@inbounds v = vvals[tt[idx]]
+        0 			idx += 1
+        0 			push!(vals,v)
+        0 			idx += 1 #skip TYPE_V
+        0 		elseif(ntype == TYPE_O)
+        0 			@inbounds oc = tt[idx]
+        0 			idx += 1
+        0 			@inbounds n = tt[idx]
+        0 			idx += 1
+        0 			idx += 1 #skip TYPE_O
+        - 			# s = OP[oc]
+        - 		 	# v = evaluate(OP[oc],vals[length(vals)-n+1:1:length(vals)])::Float64
+        0 		 	@inbounds v = evaluate(OP[oc],vals,length(vals)-n+1)::Float64
+        - 
+        - 			# @show OP[oc]
+        - 			# @show nvals
+        - 
+        - 			# if(OP[oc] == :+)
+        - 			# 	v = Base.sum(nvals)
+        - 			# elseif(OP[oc] == :-)
+        - 			# 	v = (-)(nvals[1],nvals[2])
+        - 			# elseif(OP[oc] == :*)
+        - 			# 	v = Base.prod(nvals)
+        - 			# elseif(OP[oc] == :/)
+        - 			# 	v =  (/)(nvals[1],nvals[2])
+        - 			# elseif(OP[oc] == :^)
+        - 			# 	v =  (^)(nvals[1],nvals[2])
+        - 			# elseif(OP[oc] == :sin)
+        - 			# 	v =  sin(nvals[1])
+        - 			# elseif(OP[oc] == :cos)
+        - 			# 	v =  cos(nvals[1])
+        - 			# end
+        - 
+        0 			@inbounds resize!(vals,length(vals)-n+1)
+        - 			# @show v
+        0 			@inbounds vals[end] = v
+        - 		end
+        - 	end
+        - 	# @show vals
+        0 	return pop!(vals)
+        - end
+        - 
+        - function evaluate(s::Symbol, nvals::Array{VV_TYPE,1}, i)
+        - 	# n = length(nvals)
+        0 	if(s == :+)
+        0 		result = 0.0
+        0 		@simd for j=i:1:length(nvals)
+        0 			@inbounds result+=nvals[j]
+        - 		end
+     9616 		return result
+        - 		# return Base.sum(nvals[i:1:end])
+        0 	elseif(s == :-)
+        0 		@inbounds return (-)(nvals[i],nvals[i+1])
+        0 	elseif(s == :*)
+        0 		result = nvals[i]
+        0 		@simd for j=i+1:1:length(nvals)
+        0 			@inbounds result *= nvals[j]
+        - 		end
+     6400 		@inbounds return result
+        - 		# return Base.prod(nvals[i:1:end])
+        0 	elseif(s == :/)
+        0 		@inbounds return (/)(nvals[i],nvals[i+1])
+        0 	elseif(s == :^)
+     6400 		@inbounds return (^)(nvals[i],nvals[i+1])
+        0 	elseif(s == :sin)
+        0 		@inbounds return sin(nvals[i])
+        0 	elseif(s == :cos)
+     6400 		@inbounds return cos(nvals[i])
+        - 	end
+        - end
+        - 
+        - # function sum_n(x::Array{VV_TYPE,1},n)
+        - # 	result = 0.0
+        - # 	for i in 1:1:n
+        - # 		result += x[i]
+        - # 	end
+        - # 	return result
+        - # end
+        - 
+        - 
+        - # function prod_n(x::Array{VV_TYPE,1},n)
+        - # 	result = 0.0
+        - # 	for i in 1:1:n
+        - # 		result *= x[i]
+        - # 	end
+        - # 	return result
+        - # end
+        - 
+        - # @eval 	function evaluate(oc, args...)
+        - # 			s = OP[oc]
+        - # 			out = Expr(:if)
+        - # 			comp = Expr(:comparison)
+        - 
+        - # 			if(s == :+)
+        - # 				return (+)(args...)
+        - # 			elseif(s == :-)
+        - # 				return (-)(args...)
+        - # 			elseif(s == :*)
+        - # 				return (*)(args...)
+        - # 			elseif(s == :/)
+        - # 				return (/)(args...)
+        - # 			elseif(s == :^)
+        - # 				return (^)(args...)
+        - # 			elseif(s == :sin)
+        - # 				return sin(args...)
+        - # 			elseif(s == :cos)
+        - # 				return cos(args...)
+        - # 			end
+        - # 		end
+        - 
+        - 
+        - # function evaluate(s::Symbol, nvals)
+        - # 	if(s == :+)
+        - # 		return Base.sum(nvals)
+        - # 	elseif(s == :-)
+        - # 		return (-)(nvals[1],nvals[2])
+        - # 	elseif(s == :*)
+        - # 		return Base.prod(nvals)
+        - # 	elseif(s == :/)
+        - # 		return (/)(nvals[1],nvals[2])
+        - # 	elseif(s == :^)
+        - # 		return (^)(nvals[1],nvals[2])
+        - # 	elseif(s == :sin)
+        - # 		return sin(nvals[1])
+        - # 	elseif(s == :cos)
+        - # 		return cos(nvals[1])
+        - # 	end
+        - # end
+        - 
+        - 
+        - ## Interface method
+        - function feval(tt::TT_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
+        - 	# (val::Float64,idx) = evaluate(tt,length(tt),vvals, pvals)
+        0 	vals = Array{Float64,1}()
+        0 	sizehint!(vals,length(tt))
+        - 	# nvals = Array{Float64,1}(1000000)
+        - 	# nvals = Array{Float64,1}(1000000)
+        0 	val = forward_evaluate(tt, vals,vvals,pvals)
+        0 	return val
+        - end
+        - 

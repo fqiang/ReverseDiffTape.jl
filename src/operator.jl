@@ -84,15 +84,15 @@ for oc = B_OP_START:1:B_OP_END
 			($o)(l::Placeholder,r::Placeholder) = ($o)(typeof(l),typeof(r),l,r)
 		end)
 
-	eval(quote
-			evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE, rval::VV_TYPE) =
-			begin
-				# ex = Expr(:call,OP[$(oc)],lval,rval)
-				# debug("evaluate:",ex)
-				return ($o)(lval,rval)
-			end
+	# eval(quote
+	# 		evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE, rval::VV_TYPE) =
+	# 		begin
+	# 			# ex = Expr(:call,OP[$(oc)],lval,rval)
+	# 			# debug("evaluate:",ex)
+	# 			return ($o)(lval,rval)
+	# 		end
 
-		end)
+	# 	end)
 end
 
 
@@ -134,53 +134,57 @@ for oc = U_OP_START:1:U_OP_END
 			($o)(l::Placeholder) = ($o)(typeof(l),l)
 		end)
 
-	eval(quote
-			evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE) =
-			begin
-				# ex = Expr(:call,OP[$(oc)],lval)
-				# debug("evaluate:",ex)
-				return ($o)(lval)
-			end
-		end)
+	# eval(quote
+	# 		evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE) =
+	# 		begin
+	# 			# ex = Expr(:call,OP[$(oc)],lval)
+	# 			# debug("evaluate:",ex)
+	# 			return ($o)(lval)
+	# 		end
+	# 	end)
 end
+# 
+# evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)::Float64
+# evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)::Float64
+# evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)::Float64
+# evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)::Float64
+# evaluate(s::Symbol, args...) = evaluate(Val{s},args...)::Float64
 
-evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)::Float64
-evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)::Float64
-evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)::Float64
-evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)::Float64
+# eval(quote
+# 	evaluate(::Type{Val{:+}}, args...) = 
+# 	begin
+# 		return ($(:+))(args...)
+# 	end
+
+# 	evaluate(::Type{Val{:*}}, args...) = 
+# 	begin
+# 		return ($(:*))(args...)
+# 	end
+# end)
 
 
 #building tape with Julia expression
 function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
 	head = expr.head
-	if(head == :ref)
+	if(head == :ref)  #a JuMP variable
 		assert(length(expr.args) == 2)
 		vidx = expr.args[2]
-		return AD_V(tt,vidx)
+		push!(tt,TYPE_V)
+		push!(tt,vidx)
+		push!(tt,TYPE_V)
 	elseif(head == :call)
-		if(length(expr.args) >= 3) #binary should has 3 arguments, and we should also support multiple argument such as sum/prod list
+		# if(length(expr.args) >= 3) #binary should has 3 arguments, and we should also support multiple argument such as sum/prod list
 			# @show expr.args[2]
 			op = expr.args[1]
 			assert(typeof(op)==Symbol)
-			args = Array{Placeholder,1}()
 			for i in 2:1:length(expr.args)
-				oprand = tapeBuilder(expr.args[i],tt,pvals)
-				push!(args,oprand)
+				tapeBuilder(expr.args[i],tt,pvals)
 			end
 
-			idxes = Array{IDX_TYPE,1}()
-			for o in args
-				if(o.t == TYPE_P || o.t == TYPE_V)
-					push!(tt,o.idx)
-					push!(tt,o.t)
-					push!(idxes,length(tt))
-				else
-					push!(idxes,o.idx)
-				end
-			end
-			# @show op
-			return AD_O(tt,OC_TO_OP[op],idxes...)
-
+			push!(tt,TYPE_O)
+			push!(tt,OC_TO_OP[op])
+			push!(tt,length(expr.args)-1)
+			push!(tt,TYPE_O)
 			######################### -- old code for only support binary op
 			# l = tapeBuilder(expr.args[2],tt,pvals)
 			# # @show l
@@ -194,22 +198,29 @@ function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
 			# end
 			# return ret
 			####################### 
-		elseif(length(expr.args) == 2) #unary has only 2 arguments
-			l = tapeBuilder(expr.args[2],tt,pvals)
-            return ReverseDiffTape.(expr.args[1])(l)
-		else
-			dump(expr)
-			assert(false)
-		end
+		# elseif(length(expr.args) == 2) #unary has only 2 arguments
+		# 	op = expr.args[1]
+		# 	assert(typeof(op)==Symbol)
+		# 	push!(tt,TYPE_O)
+		# 	push!(tt,OC_TO_OP[op])
+		# 	push!(tt,1)
+		# 	push!(tt,TYPE_O)
+		# else
+		# 	dump(expr)
+		# 	assert(false)
+		# end
     else
     	println("error !")
     	dump(expr)
     	assert(false)
     end
-
+    nothing
 end
 
-function tapeBuilder(expr::Real, tt::TT_TYPE, pvals::TV_TYPE)
-	return AD_P(tt,pvals,expr)
+function tapeBuilder(expr::Real, tt::TT_TYPE, pvals::TV_TYPE) #a JuMP parameter
+	push!(tt,TYPE_P)
+	push!(pvals,expr)
+	push!(tt,length(pvals))
+	push!(tt,TYPE_P)
 end
 

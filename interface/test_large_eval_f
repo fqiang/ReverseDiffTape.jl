@@ -1,0 +1,297 @@
+test_large_eval_f
+
+JuMP
+
+julia> @code_native MathProgBase.eval_f(jd,x)
+	.section	__TEXT,__text,regular,pure_instructions
+Filename: /Users/fqiang/.julia/v0.4/JuMP/src/nlp.jl
+Source line: 250
+	pushq	%rbp
+	movq	%rsp, %rbp
+	pushq	%r15
+	pushq	%r14
+	pushq	%r13
+	pushq	%r12
+	pushq	%rbx
+	subq	$88, %rsp
+	movq	%rsi, -112(%rbp)
+	movq	%rdi, %rbx
+Source line: 250
+	movq	$10, -96(%rbp)
+	movabsq	$jl_pgcstack, %rax
+	movq	(%rax), %rcx
+	movq	%rcx, -88(%rbp)
+	leaq	-96(%rbp), %rcx
+	movq	%rcx, (%rax)
+	xorps	%xmm0, %xmm0
+	movups	%xmm0, -80(%rbp)
+	movups	%xmm0, -64(%rbp)
+	movq	$0, -48(%rbp)
+Source line: 244
+	movabsq	$13263333696, %rax      ## imm = 0x3168E6940
+	callq	*%rax
+Source line: 245
+	movabsq	$jl_gc_diff_total_bytes, %r14
+	movabsq	$13271409560, %r13      ## imm = 0x31709A398
+	movq	(%r13), %r15
+	callq	*%r14
+	movabsq	$13271409568, %r12      ## imm = 0x31709A3A0
+	addq	%r15, %rax
+	movq	%rax, (%r13)
+	movq	(%r12), %r15
+	callq	*%r14
+	addq	%r15, %rax
+	movq	%rax, (%r12)
+	testb	$1, 16(%rbx)
+	je	L278
+Source line: 248
+	movq	(%r12), %r15
+	callq	*%r14
+	addq	%r15, %rax
+	movq	%rax, (%r12)
+	movq	32(%rbx), %rdi
+	testq	%rdi, %rdi
+	je	L922
+	movq	%rbx, -128(%rbp)
+Source line: 250
+	leaq	-48(%rbp), %rsi
+Source line: 248
+	movq	%rdi, -56(%rbp)
+	movq	(%rdi), %rax
+	movq	-112(%rbp), %rcx
+	movq	%rcx, -48(%rbp)
+	movl	$1, %edx
+	callq	*%rax
+	movq	-8(%rax), %rcx
+	shrq	$4, %rcx
+	cmpq	$282433669, %rcx        ## imm = 0x10D59885
+	jne	L952
+	movsd	(%rax), %xmm0
+	movsd	%xmm0, -104(%rbp)
+	movabsq	$13271409576, %r14      ## imm = 0x31709A3A8
+	movq	(%r14), %rbx
+	movabsq	$jl_gc_diff_total_bytes, %rax
+	callq	*%rax
+	addq	%rbx, %rax
+	movq	%rax, (%r14)
+	jmpq	L771
+Source line: 250
+L278:	movabsq	$13271409576, %r15      ## imm = 0x31709A3A8
+	movq	(%r15), %r12
+	callq	*%r14
+	addq	%r12, %rax
+	movq	%rax, (%r15)
+	movq	(%rbx), %rax
+	movq	(%rax), %rcx
+	movq	-8(%rcx), %rax
+	shrq	$4, %rax
+	cmpq	$286464745, %rax        ## imm = 0x11131AE9
+	jne	L1003
+	movq	%rcx, -80(%rbp)
+Source line: 251
+	movabsq	$13271409584, %r15      ## imm = 0x31709A3B0
+	movq	(%r15), %r12
+	movabsq	$jl_gc_diff_total_bytes, %r14
+	movq	%rcx, %r13
+	callq	*%r14
+	addq	%r12, %rax
+	movq	%rax, (%r15)
+	movq	24(%rbx), %rsi
+	movq	%rbx, -128(%rbp)
+	testq	%rsi, %rsi
+	je	L1051
+	movq	%rsi, -72(%rbp)
+	movabsq	$13263333872, %rax      ## imm = 0x3168E69F0
+	movq	-112(%rbp), %rdi
+	callq	*%rax
+	movq	24(%r13), %rax
+	addsd	16(%rax), %xmm0
+	movsd	%xmm0, -104(%rbp)
+Source line: 252
+	movabsq	$13271409592, %r15      ## imm = 0x31709A3B8
+	movq	(%r15), %r12
+	callq	*%r14
+	movabsq	$13271409600, %rcx      ## imm = 0x31709A3C0
+	addq	%r12, %rax
+	movq	%rax, (%r15)
+	movq	(%r13), %rax
+	movq	%rax, -64(%rbp)
+	movq	8(%rax), %rbx
+	movq	(%rcx), %r15
+	movabsq	$13271409600, %r12      ## imm = 0x31709A3C0
+	callq	*%r14
+	xorl	%r14d, %r14d
+	addq	%r15, %rax
+	movq	%rax, (%r12)
+	testq	%rbx, %rbx
+	movl	$0, %eax
+	cmovnsq	%rbx, %rax
+	testq	%rax, %rax
+	je	L771
+Source line: 253
+	testq	%rbx, %rbx
+	cmovsq	%r14, %rbx
+Source line: 252
+	negq	%rbx
+	movq	%rbx, -120(%rbp)
+	xorl	%r12d, %r12d
+L525:	movabsq	$13271409600, %r15      ## imm = 0x31709A3C0
+Source line: 253
+	movq	(%r15), %rbx
+	movabsq	$jl_gc_diff_total_bytes, %rax
+	callq	*%rax
+	addq	%rbx, %rax
+	movq	%rax, (%r15)
+	movq	16(%r13), %rdi
+	cmpq	8(%rdi), %r14
+	jae	L1081
+	movq	(%r13), %rax
+	cmpq	8(%rax), %r14
+	movq	-112(%rbp), %r8
+	jae	L1139
+	leaq	(,%r12,8), %rcx
+	movq	(%rax), %rax
+	subq	%rcx, %rax
+	movq	(%rax), %rax
+	testq	%rax, %rax
+	je	L1181
+	movq	8(%r8), %rsi
+	movq	8(%rax), %rdx
+	leaq	-1(%rdx), %rax
+	cmpq	%rsi, %rax
+	jae	L1120
+	movq	8(%r13), %rax
+	cmpq	8(%rax), %r14
+	jae	L1139
+	movq	(%rax), %rax
+	subq	%rcx, %rax
+	movq	(%rax), %rax
+	testq	%rax, %rax
+	je	L1181
+	movq	8(%rax), %rax
+	leaq	-1(%rax), %rbx
+	cmpq	%rsi, %rbx
+	jae	L1211
+	movq	(%rdi), %rsi
+	negq	%rcx
+	movsd	(%rsi,%rcx), %xmm0
+	movq	(%r8), %rcx
+	mulsd	-8(%rcx,%rdx,8), %xmm0
+	mulsd	-8(%rcx,%rax,8), %xmm0
+	movabsq	$13271409608, %rbx      ## imm = 0x31709A3C8
+	movq	(%rbx), %r15
+	movsd	-104(%rbp), %xmm1
+	addsd	%xmm0, %xmm1
+	movsd	%xmm1, -104(%rbp)
+	movabsq	$jl_gc_diff_total_bytes, %rax
+	callq	*%rax
+	incq	%r14
+	decq	%r12
+	addq	%r15, %rax
+	cmpq	%r12, -120(%rbp)
+	movq	%rax, (%rbx)
+	jne	L525
+Source line: 256
+L771:	movabsq	$13271409608, %r15      ## imm = 0x31709A3C8
+	movq	(%r15), %rbx
+	movabsq	$jl_gc_diff_total_bytes, %r14
+	callq	*%r14
+	addq	%rbx, %rax
+	movq	%rax, (%r15)
+	movq	-128(%rbp), %rbx
+	movsd	104(%rbx), %xmm0
+	movsd	%xmm0, -112(%rbp)
+	movabsq	$13263333728, %rax      ## imm = 0x3168E6960
+	callq	*%rax
+Source line: 257
+	movabsq	$13271409616, %r12      ## imm = 0x31709A3D0
+Source line: 256
+	addsd	-112(%rbp), %xmm0
+	movsd	%xmm0, 104(%rbx)
+Source line: 257
+	movq	(%r12), %rbx
+	callq	*%r14
+	movabsq	$13271409624, %r15      ## imm = 0x31709A3D8
+	addq	%rbx, %rax
+	movq	%rax, (%r12)
+	movq	(%r15), %rbx
+	callq	*%r14
+	movabsq	$jl_pgcstack, %rcx
+	addq	%rbx, %rax
+	movq	%rax, (%r15)
+	movq	-88(%rbp), %rax
+	movq	%rax, (%rcx)
+	movsd	-104(%rbp), %xmm0
+	leaq	-40(%rbp), %rsp
+	popq	%rbx
+	popq	%r12
+	popq	%r13
+	popq	%r14
+	popq	%r15
+	popq	%rbp
+	ret
+Source line: 248
+L922:	movabsq	$jl_undefref_exception, %rax
+	movq	(%rax), %rdi
+	movabsq	$jl_throw_with_superfluous_argument, %rax
+	movl	$248, %esi
+	callq	*%rax
+L952:	movabsq	$jl_type_error_rt_line, %rbx
+	movabsq	$13271409632, %rdi      ## imm = 0x31709A3E0
+	movabsq	$13271396421, %rsi      ## imm = 0x317097045
+	movabsq	$4518938704, %rdx       ## imm = 0x10D598850
+	movq	%rax, %rcx
+	movl	$248, %r8d
+	callq	*%rbx
+Source line: 250
+L1003:	movabsq	$jl_type_error_rt_line, %rax
+	movabsq	$13271409632, %rdi      ## imm = 0x31709A3E0
+	movabsq	$13271396421, %rsi      ## imm = 0x317097045
+	movabsq	$4583435920, %rdx       ## imm = 0x11131AE90
+	movl	$250, %r8d
+	callq	*%rax
+Source line: 251
+L1051:	movabsq	$jl_undefref_exception, %rax
+	movq	(%rax), %rdi
+	movabsq	$jl_throw_with_superfluous_argument, %rax
+	movl	$251, %esi
+	callq	*%rax
+L1081:	movl	$1, %eax
+Source line: 253
+	subq	%r12, %rax
+	movq	%rsp, %rcx
+	leaq	-16(%rcx), %rsi
+	movq	%rsi, %rsp
+	movq	%rax, -16(%rcx)
+	movabsq	$jl_bounds_error_ints, %rax
+	movl	$1, %edx
+	callq	*%rax
+L1120:	movq	%rsp, %rax
+	leaq	-16(%rax), %rsi
+	movq	%rsi, %rsp
+	movq	%rdx, -16(%rax)
+	jmpq	L1225
+L1139:	movl	$1, %ecx
+	subq	%r12, %rcx
+	movq	%rsp, %rdx
+	leaq	-16(%rdx), %rsi
+	movq	%rsi, %rsp
+	movq	%rcx, -16(%rdx)
+	movabsq	$jl_bounds_error_ints, %rcx
+	movq	%rax, %rdi
+	movl	$1, %edx
+	callq	*%rcx
+L1181:	movabsq	$jl_undefref_exception, %rax
+	movq	(%rax), %rdi
+	movabsq	$jl_throw_with_superfluous_argument, %rax
+	movl	$253, %esi
+	callq	*%rax
+L1211:	movq	%rsp, %rcx
+	leaq	-16(%rcx), %rsi
+	movq	%rsi, %rsp
+	movq	%rax, -16(%rcx)
+L1225:	movabsq	$jl_bounds_error_ints, %rax
+	movq	%r8, %rdi
+	movl	$1, %edx
+	callq	*%rax
+
