@@ -1,7 +1,7 @@
 #temp2.jl
-include("test_large.jl") 
+include("test_small.jl") 
  jd = m.internalModel.evaluator.jd
- ex=MathProgBase.obj_expr(jd)
+ ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
  tt = TT_TYPE()
  p = TV_TYPE()
@@ -18,12 +18,15 @@ Profile.clear_malloc_data()
 @time MathProgBase.eval_f(jd,x)
 
 
+sum{ 0.5*h*(u[i+1]^2 + u[i]^2) + 0.5*alpha*h*(cos(    t[i+1]) + cos(t[i])), i = 1:ni}
+
 # julia> ex.args
 # 3-element Array{Any,1}:
 #  :+                                
 #  :(0.5 * x[1] * x[2] - x[1] / x[2])
 #  :(x[1] * x[3] * x[4])             
 function prepend_test(n)
+	t = 0.0
 	tic()
 	a = Array{Float64,1}()
 	for i=1:n
@@ -34,6 +37,7 @@ function prepend_test(n)
 end
 
 function append_test(n)
+	t = 0.0
 	tic()
 	a = Array{Float64,1}()
 	for i=1:n
@@ -42,6 +46,33 @@ function append_test(n)
 	t += toq()
 	return t
 end
+
+function push_pop_test(n)
+	t=0.0
+	tic()
+	a = Array{Float64,1}()
+	for i=1:n
+		push!(a,1.1)
+		v = pop!(a)
+	end
+	t += toq()
+	return t
+end
+
+function reverse_test(n)
+	t = 0.0
+	tic()
+	a = Array{Float64,1}(n)
+	reverse(a)
+	t += toq()
+	return t
+end
+
+function getll(n)
+	t = length(n)
+	return t
+end
+
 
 @generated function bar{T}(x::Array{T,1})
 	# @show x,n
