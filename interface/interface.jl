@@ -94,8 +94,8 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     numVar::Int
     numConstr::Int
     pvals::TV_TYPE
-    obj_tt::TT_TYPE
-    constr_tt::Array{TT_TYPE,1}
+    obj_tt::Tape{Int}
+    constr_tt::Array{Tape{Int},1}
 
     jac_I::Array{Int,1}
     jac_J::Array{Int,1}
@@ -123,8 +123,8 @@ end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr)
  	return TapeNLPEvaluator(nlpe, 
-        numVar,numConstr,TV_TYPE(), TT_TYPE(), 
-        Array{TT_TYPE,1}(), 
+        numVar,numConstr,TV_TYPE(), 
+        Tape{Int}(), Array{Tape{Int},1}(), 
         Array{Int,1}(), Array{Int,1}(),-1,
         Array{Int,1}(), Array{Int,1}(),false, 
         0.0, 0.0, 0.0, 0.0, 0.0,
@@ -172,7 +172,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     for i =1:1:d.numConstr
 	   conexpr = MathProgBase.constr_expr(jd,i)
        # @show conexpr.args[1]
-       tt = TT_TYPE()
+       tt = Tape{Int}()
        tapeBuilder(conexpr.args[1],tt,d.pvals)
        push!(d.constr_tt,tt)
        # @show d.constr_tt[i]

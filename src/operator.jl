@@ -162,7 +162,14 @@ end
 ##########################################################################################
 
 #building tape with Julia expression
-function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
+function tapeBuilder(expr::Expr,tape::Tape{IDX_TYPE}, pvals::TV_TYPE)
+	vset = Set{IDX_TYPE}()
+	tapeBuilder(expr,tape, pvals, vset)
+	tape.nvar = length(vset)
+end
+
+function tapeBuilder(expr::Expr,tape::Tape{IDX_TYPE}, pvals::TV_TYPE, vset::Set{IDX_TYPE})
+	tt = tape.tt
 	head = expr.head
 	if(head == :ref)  #a JuMP variable
 		assert(length(expr.args) == 2)
@@ -170,19 +177,25 @@ function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
 		push!(tt,TYPE_V)
 		push!(tt,vidx)
 		push!(tt,TYPE_V)
+
+		push!(vset,vidx)
+		tape.nvnode += 1
+		tape.nnode += 1
 	elseif(head == :call)
 		# if(length(expr.args) >= 3) #binary should has 3 arguments, and we should also support multiple argument such as sum/prod list
 			# @show expr.args[2]
 			op = expr.args[1]
 			assert(typeof(op)==Symbol)
 			for i in 2:1:length(expr.args)
-				tapeBuilder(expr.args[i],tt,pvals)
+				tapeBuilder(expr.args[i],tape,pvals,vset)
 			end
 
 			push!(tt,TYPE_O)
 			push!(tt,OC_TO_OP[op])
 			push!(tt,length(expr.args)-1)
 			push!(tt,TYPE_O)
+			tape.nnode += 1
+			tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
 			######################### -- old code for only support binary op
 			# l = tapeBuilder(expr.args[2],tt,pvals)
 			# # @show l
@@ -215,10 +228,12 @@ function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)
     nothing
 end
 
-function tapeBuilder(expr::Real, tt::TT_TYPE, pvals::TV_TYPE) #a JuMP parameter
+function tapeBuilder(expr::Real, tape::Tape{IDX_TYPE}, pvals::TV_TYPE,vset::Set{IDX_TYPE}) #a JuMP parameter
+	tt = tape.tt
 	push!(tt,TYPE_P)
 	push!(pvals,expr)
 	push!(tt,length(pvals))
 	push!(tt,TYPE_P)
+	tape.nnode += 1
 end
 

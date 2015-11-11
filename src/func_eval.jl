@@ -1,12 +1,13 @@
 
 #forward evaluation for a scalar function
-function forward_evaluate{V,I}(tt::Array{I,1}, vvals::Array{V,1}, pvals::Array{V,1})
+function forward_evaluate{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1})
+	tt = tape.tt
 	idx = one(I)
 	vals = Array{V,1}()
 	v = [zero(V)]
 
 	sizehint!(v,1)
-	sizehint!(vals,round(I,length(tt)/10)) #just a random guess
+	sizehint!(vals,tape.maxoperands)
 	
 	while(idx <= length(tt))
 		# @show idx
@@ -41,7 +42,7 @@ function forward_evaluate{V,I}(tt::Array{I,1}, vvals::Array{V,1}, pvals::Array{V
 end
 
 ## Interface method
-function feval{V,I}(tt::Array{I,1}, vvals::Array{V,1}, pvals::Array{V,1})
-	val = forward_evaluate(tt,vvals,pvals)
+function feval{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1})
+	val = forward_evaluate(tape,vvals,pvals)
 	return val
 end

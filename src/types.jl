@@ -15,6 +15,19 @@ const TYPE_O = 3
 const TYPE_OU = 3	#unary op
 const TYPE_OB = 4  	#binary op
 
+type Tape{I<:Int}
+	tt::Array{I,1}
+	nvar::I
+	nvnode::I
+	nnode::I
+	maxoperands::I
+	
+	function Tape()
+		return new(Array{I,1}(),zero(I),zero(I),zero(I),zero(I))
+	end
+end
+
+
 abstract Placeholder
 immutable AD_V <: Placeholder
 	tt::TT_TYPE
