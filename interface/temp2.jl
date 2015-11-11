@@ -19,7 +19,7 @@ Profile.clear_malloc_data()
 gI = Array{Int,1}()
 sizehint!(gI, tt.nvnode)
 @time ReverseDiffTape.grad_structure(tt,gI)
-g = Array{Float64,1}(length(x))
+g = Array{Float64,1}(length(x));
 @time ReverseDiffTape.grad_reverse(tt,x,p,g)
 
 jg = Array{Float64,1}(length(x));

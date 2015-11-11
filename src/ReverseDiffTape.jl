@@ -14,7 +14,7 @@ end
 
 export
 #constant
-	OP, OC_TO_OP,
+	OP, S_TO_OC,
 #types
 	IDX_TYPE, TT_TYPE, TV_TYPE, TV_STACK, VV_TYPE, TYPE_V, TYPE_P, TYPE_OU, TYPE_OB,
 #Objects

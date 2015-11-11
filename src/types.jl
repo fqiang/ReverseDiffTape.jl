@@ -12,8 +12,6 @@ typealias TV_TYPE Array{VV_TYPE,1}
 const TYPE_V = 1	#variable node
 const TYPE_P = 2	#param node
 const TYPE_O = 3
-const TYPE_OU = 3	#unary op
-const TYPE_OB = 4  	#binary op
 
 type Tape{I<:Int}
 	tt::Array{I,1}
@@ -28,62 +26,63 @@ type Tape{I<:Int}
 end
 
 
-abstract Placeholder
-immutable AD_V <: Placeholder
-	tt::TT_TYPE
-	idx::IDX_TYPE  #index on vvals
-	t::Uint    #type code
+abstract Placeholder{I,V}
+immutable AD_V{I,V} <: Placeholder{I,V}
+	tape::Tape{I}
+	idx::I  #index on vvals
+	t::I    #type code
 
-	function AD_V(tt::TT_TYPE, vvals::TV_TYPE,val) #provide variable value
+	function AD_V(tape::Tape{I}, vvals::Array{V,1}, val::V) #provide variable value
 		push!(vvals,val)
-		new(tt,length(vvals),TYPE_V)
+		push!(tape.tt,TYPE_V)
+		push!(tape.tt,length(vvals))
+		push!(tape.tt,TYPE_V)
+		tape.nvar += 1
+		tape.nnode += 1
+		return new(tape,length(vvals),TYPE_V)
 	end
-	function AD_V(tt::TT_TYPE,idx) #without variable value
-		new(tt,idx,TYPE_V)
+	function AD_V(tape::Tape{I},idx::I) #without variable value
+		push!(tape.tt,TYPE_V)
+		push!(tape.tt,idx)
+		push!(tape.tt,TYPE_V)
+		tape.nar += 1
+		tape.nnode += 1
+		return new(tape,idx,TYPE_V)
 	end
 end
 
-immutable AD_P <: Placeholder
-	tt::TT_TYPE
-	idx::IDX_TYPE  #index on pvals
-	t::Uint    #type code
+immutable AD_P{I,V} <: Placeholder{I,V}
+	tape::Tape{I}
+	idx::I  #index on pvals
+	t::I    #type code
 
-	function AD_P(tt::TT_TYPE, pvals::TV_TYPE,val)
+	function AD_P(tape::Tape{I}, pvals::Array{V,1},val::V)
 		push!(pvals,val)
-		new(tt,length(pvals),TYPE_P)
+		push!(tape.tt,TYPE_P)
+		push!(tape.tt,length(pvals))
+		push!(tape.tt,TYPE_P)
+		tape.nnode += 1
+		new(tape,length(pvals),TYPE_P)
 	end
 end
 
-immutable AD_O <: Placeholder
-	tt::TT_TYPE
-	idx::IDX_TYPE  #index on tape
-    t::Uint    #type code	 
+immutable AD_O{I,V} <: Placeholder{I,V}
+	tape::Tape{I}
+	idx::I  #index on tape
+    t::I    #type code	 
 
-  #   function AD_O(tt,oc,lidx,ridx)
-  #   	push!(tt,lidx)
-		# push!(tt,ridx)
-		# push!(tt,oc)
-		# push!(tt,TYPE_OB)
-  #   	new(tt,length(tt),TYPE_OB)
-  #   end
-  #   function AD_O(tt,oc,lidx)
-  #   	push!(tt,lidx)
-		# push!(tt,oc)
-		# push!(tt,TYPE_OU)
-  #   	new(tt,length(tt),TYPE_OB)
-  #   end
-    function AD_O(tt,oc,args...)
+    function AD_O(tape::Tape{I},s::Symbol,args...)
     	# @show args
-    	num = length(args)
-    	type_c = num + 2
-    	# @show num
-    	assert(num>=1)
-    	for i in args
-    		push!(tt,i)
-    	end
-    	push!(tt,oc)
-    	push!(tt,type_c) #based on TYPE_OU + 2
-    	new(tt,length(tt),type_c)
+    	n = length(args)
+    	# @show n
+    	assert(n>=1)
+    	push!(tape.tt,TYPE_O)
+    	push!(tape.tt,S_TO_OC[s])
+    	push!(tape.tt,n) 
+    	push!(tape.tt,TYPE_O)
+    	tape.maxoperands < n?tape.maxoperands=n:nothing
+    	tape.nnode += 1
+    	new(tape,length(tape.tt),TYPE_O)
     end
 end
 
@@ -130,6 +129,6 @@ function Base.show(io::IO,m::AD_P)
 end
 
 function Base.show(io::IO,m::AD_O)
-	assert(m.t >= TYPE_OU )
+	assert(m.t == TYPE_O )
 	print(io, "AD_O[",m.idx,"]")
 end
