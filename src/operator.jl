@@ -83,16 +83,6 @@ for oc = B_OP_START:1:B_OP_END
 	eval(quote
 			($o)(l::Placeholder,r::Placeholder) = ($o)(typeof(l),typeof(r),l,r)
 		end)
-
-	# eval(quote
-	# 		evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE, rval::VV_TYPE) =
-	# 		begin
-	# 			# ex = Expr(:call,OP[$(oc)],lval,rval)
-	# 			# debug("evaluate:",ex)
-	# 			return ($o)(lval,rval)
-	# 		end
-
-	# 	end)
 end
 
 
@@ -134,34 +124,42 @@ for oc = U_OP_START:1:U_OP_END
 			($o)(l::Placeholder) = ($o)(typeof(l),l)
 		end)
 
-	# eval(quote
-	# 		evaluate(::Type{Val{OP[$(oc)]}},lval::VV_TYPE) =
-	# 		begin
-	# 			# ex = Expr(:call,OP[$(oc)],lval)
-	# 			# debug("evaluate:",ex)
-	# 			return ($o)(lval)
-	# 		end
-	# 	end)
+
 end
-# 
-# evaluate(s::Symbol, lval::VV_TYPE) = evaluate(Val{s},lval)::Float64
-# evaluate(s::Symbol, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{s},lval,rval)::Float64
-# evaluate(oc::OP_TYPE, lval::VV_TYPE) = evaluate(Val{OP[oc]},lval)::Float64
-# evaluate(oc::OP_TYPE, lval::VV_TYPE, rval::VV_TYPE) = evaluate(Val{OP[oc]},lval,rval)::Float64
-# evaluate(s::Symbol, args...) = evaluate(Val{s},args...)::Float64
 
-# eval(quote
-# 	evaluate(::Type{Val{:+}}, args...) = 
-# 	begin
-# 		return ($(:+))(args...)
-# 	end
+##########################################################################################
+import Lazy
+using Base.Meta
 
-# 	evaluate(::Type{Val{:*}}, args...) = 
-# 	begin
-# 		return ($(:*))(args...)
-# 	end
-# end)
+switchblock = Expr(:block)
 
+for i = U_OP_START:1:U_OP_END
+	ex = parse("@inbounds v[1]=$(OP[i])(vals[i])")
+    push!(switchblock.args,quot(OP[i]),ex)
+end
+
+for i = B_OP_START:1:B_OP_END
+	o = OP[i]
+	if(o==:+)
+		ex = Expr(:block)
+		push!(ex.args,parse("@inbounds v[1] = zero(V)"))
+		push!(ex.args,parse("@simd for j=i:1:length(vals) \n @inbounds v[1]+=vals[j] \n end"))
+	elseif(o==:*)
+		ex = Expr(:block)
+		push!(ex.args,parse("@inbounds v[1] = vals[i]"))
+		push!(ex.args,parse("@simd for j=i+1:1:length(vals) \n @inbounds v[1] *= vals[j] \n end"))
+	else
+		ex = parse("@inbounds  v[1]=$(o)(vals[i],vals[i+1])")
+	end
+	push!(switchblock.args,quot(o),ex)
+end
+
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+
+@eval function evaluate{V,I}(s::Symbol, vals::Array{V,1}, i::I, v::Array{V,1})
+    $switchexpr
+end
+##########################################################################################
 
 #building tape with Julia expression
 function tapeBuilder(expr::Expr,tt::TT_TYPE, pvals::TV_TYPE)

@@ -76,33 +76,47 @@ function forward_pass{V,I}(tt::Array{I,1}, vvals::Array{V,1}, pvals::Array{V,1},
 	end
 end
 
+function reverse_pass{V,I}(tt::Array{I,1},v::Array{V,1},g::Array{V,1})
+	idx = length(tt)
+	while(idx > 0)
+		ntype = tt[idx]
+		idx += 1
+		if(ntype == TYPE_P)
 
+		elseif(ntype == TYPE_V)
 
-function evaluate{V,I}(s::Symbol, vals::Array{V,1}, i::I, v::Array{V,1})
-	# n = length(nvals)
-	# @show s,vals,i
-	if(s == :+)
-		@inbounds v[1] = zero(V)
-		@simd for j=i:1:length(vals)
-			@inbounds v[1]+=vals[j]
+		elseif(ntype == TYPE_O)
+
 		end
-	elseif(s == :-)
-		@inbounds return v[1] = (-)(vals[i],vals[i+1])
-	elseif(s == :*)
-		@inbounds v[1] = vals[i]
-		@simd for j=i+1:1:length(vals)
-			@inbounds v[1] *= vals[j]
-		end
-	elseif(s == :/)
-		@inbounds v[1]=(/)(vals[i],vals[i+1])
-	elseif(s == :^)
-		@inbounds v[1]=(^)(vals[i],vals[i+1])
-	elseif(s == :sin)
-		@inbounds v[1]=sin(vals[i])
-	elseif(s == :cos)
-		@inbounds v[1]=cos(vals[i])
 	end
 end
+
+
+# function evaluate{V,I}(s::Symbol, vals::Array{V,1}, i::I, v::Array{V,1})
+# 	# n = length(nvals)
+# 	# @show s,vals,i
+# 	if(s == :+)
+# 		@inbounds v[1] = zero(V)
+# 		@simd for j=i:1:length(vals)
+# 			@inbounds v[1]+=vals[j]
+# 		end
+# 	elseif(s == :-)
+# 		@inbounds return v[1] = (-)(vals[i],vals[i+1])
+# 	elseif(s == :*)
+# 		@inbounds v[1] = vals[i]
+# 		@simd for j=i+1:1:length(vals)
+# 			@inbounds v[1] *= vals[j]
+# 		end
+# 	elseif(s == :/)
+# 		@inbounds v[1]=(/)(vals[i],vals[i+1])
+# 	elseif(s == :^)
+# 		@inbounds v[1]=(^)(vals[i],vals[i+1])
+# 	elseif(s == :sin)
+# 		@inbounds v[1]=sin(vals[i])
+# 	elseif(s == :cos)
+# 		@inbounds v[1]=cos(vals[i])
+# 	end
+# end
 
 
 ## Interface method
