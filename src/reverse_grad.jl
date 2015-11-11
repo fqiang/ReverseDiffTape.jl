@@ -138,62 +138,6 @@ function grad_struct{I}(tape::Tape{I}, ilist::Array{I,1}) #repeated indexes, in 
 	end
 end
 
-# function grad_struct{I}(tt::Array{I,1}, idx::IDX_TYPE, I::Set{IDX_TYPE}) #non-repeat version
-# 	assert(length(vvals) == length(grad))
-# 	# debug("enter - ", adj)
-# 	ntype = tt[idx]
-# 	idx -= 1
-# 	if(ntype ==TYPE_P)  
-# 		#do nothing , this is a parameter
-# 	elseif(ntype == TYPE_V)
-# 		vidx = tt[idx]
-# 		push!(I,vidx)
-# 	elseif(ntype == TYPE_OB)
-# 		idx -= 1
-# 		ridx = tt[idx]
-# 		idx -= 1
-# 		lidx = tt[idx]
-# 		idx -= 1
-# 		nzg(tt,lidx,I)
-# 		nzg(tt,ridx,I)
-# 	elseif(ntype == TYPE_OU)
-# 		idx -= 1 #skip oc
-# 		lidx = tt[idx]
-# 		idx -= 1
-# 		nzg(tt,lidx,I)
-# 	else
-# 		assert(false)
-# 	end
-# end
-
-# function grad_struct(tt::TT_TYPE, idx::IDX_TYPE, I::Array{IDX_TYPE,1}) #repeat version
-# 	# debug("enter - ", adj)
-# 	ntype = tt[idx]
-# 	idx -= 1
-# 	if(ntype ==TYPE_P)  
-# 		#do nothing , this is a parameter
-# 	elseif(ntype == TYPE_V)
-# 		vidx = tt[idx]
-# 		push!(I,vidx) 
-# 	elseif(ntype == TYPE_OB)
-# 		idx -= 1
-# 		ridx = tt[idx]
-# 		idx -= 1
-# 		lidx = tt[idx]
-# 		idx -= 1
-# 		grad_struct(tt,lidx,I)
-# 		grad_struct(tt,ridx,I)
-# 	elseif(ntype == TYPE_OU)
-# 		idx -= 1 #skip oc
-# 		lidx = tt[idx]
-# 		idx -= 1
-# 		grad_struct(tt,lidx,I)
-# 	else
-# 		assert(false)
-# 	end
-# end
-
-
 #Interface function
 function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	ilist = Array{I,1}()
@@ -201,8 +145,8 @@ function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	grad_struct(tape,ilist)
 
 	empty!(iset)
-	@simd for i in ilist
-		push!(iset,i)
+	@simd for i in 1:1:length(ilist)
+		push!(iset,ilist[i])
 	end
 end
 
