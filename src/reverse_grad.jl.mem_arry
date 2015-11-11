@@ -1,0 +1,175 @@
+        - 
+        - # forward pass on the tape tt, to build ss stack
+        - 
+        - #forward pass on the scalar function
+        - function forward_pass{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+        0 	tt = tape.tt
+        0 	idx = one(I)
+       80 	v = [zero(V)]
+       64 	stk = Array{V,1}() #used for value evaluation
+        0 	empty!(imm)  #used for immediate derrivative
+     1632 	sizehint!(stk,tape.maxoperands)
+        0 	sizehint!(v,1)
+        - 
+        0 	@inbounds while(idx <= length(tt))
+        - 		# @show idx
+        - 		# println("++++++++++++++++++++++++++++++++++++")
+        0 		ntype = tt[idx]
+        0 		idx += 1
+        0 		if(ntype == TYPE_P)
+        - 			# tic()
+        0 			push!(stk,pvals[tt[idx]])	
+        0 			idx += 2 #skip TYPE_P
+        0 		elseif(ntype == TYPE_V)
+     3232 			push!(stk,vvals[tt[idx]])
+        0 			idx += 2 #skip TYPE_V
+        0 		elseif(ntype == TYPE_O)
+        0 			oc = tt[idx]
+        0 			idx += 1
+        0 			n = tt[idx]
+        0 			idx += 1
+        0 			idx += 1 #skip TYPE_O
+        - 			# @show OP[oc],stk
+        - 			# @show OP[oc], length(stk)-n+1, n
+        0 			eval_idd(OP[oc],stk,length(stk)-n+1,imm,v)
+        - 			# @show imm
+        - 			# @show v
+        0 			resize!(stk,length(stk)-n+1)
+        0 			stk[end] = v[1]
+        - 		end
+        - 		# println("++++++++++++++++++++++++++++++++++++")
+        - 	end
+        - 	# @show stk
+        - end
+        - 
+        - #show be auto generated code
+        - function eval_idd{V,I}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
+        0 	if(s==:sin)
+        0 		ld = cos(v[i])
+        0 		push!(imm,ld)
+        0 		r[1] = sin(v[i])
+        0 	elseif(s==:cos)
+        0 		ld = -sin(v[i])
+        0 		push!(imm,ld)
+     6400 		r[1] = cos(v[i])
+        0 	elseif(s ==:+)
+        0 		ret = zero(V)
+        0 		@simd for j=i:1:length(v)
+        0 			push!(imm,one(V))
+        0 			ret += v[j]
+        - 		end
+     9616 		r[1] = ret
+        0 	elseif(s ==:-)
+        0 		push!(imm,one(V))
+        0 		push!(imm,-one(V))
+        0 		r[1] = (-)(v[i],v[i+1])
+        0 	elseif(s==:*)
+        0 		# for i=length(v)-n+1:1:length(v)
+        0 			# ret = one(V)
+        - 			# for j=length(v)-n+1:1:i
+        0 			# 	ret *= v[j]
+        0 			# end
+        0 			# for j=i+1:1:length(v)
+        0 			# 	ret *= v[j]
+        0 			# end
+        0 		ret = one(V)
+        0 		@simd for j = i:1:length(v)
+        0 			ret *= v[j]
+        - 		end
+        0 		r[1] = ret
+        0 		@simd for j = i:1:length(v)
+        0 			push!(imm,r[1]/v[j])
+        - 		end
+        0 	elseif(s==:/)
+        0 		r[1] = (/)(v[i],v[i+1])
+        0 		push!(imm,one(V)/v[i+1])
+        0 		push!(imm,-v[i]/v[i+1]^2)
+        - 		
+        0 	elseif(s==:^)
+        0 		r[1] = (^)(v[i],v[i+1])
+        0 		push!(imm,v[i+1]*(v[i]^(v[i+1]-1)))
+        0 		push!(imm,r[1]*(log(v[i])))
+        - 	end
+        - end
+        - 
+        - 
+        - function reverse_pass{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
+        0 	tt = tape.tt
+        0 	idx = length(tt)
+       64 	adjs = Array{V,1}()
+    11072 	sizehint!(adjs, round(I,length(tt)/10))  #random guessing size, the acutally size should be (depth_of_tree - current_depth + maxoperands)
+        0 	push!(adjs,one(V))  #init value 
+        - 
+        0 	@inbounds while(idx > 0)
+        0 		ntype = tt[idx]
+        0 		idx -= 1
+        0 		adj = pop!(adjs)
+        - 		# val = pop!(v)
+        0 		if(ntype == TYPE_P)
+        0 			idx -= 2
+        0 		elseif(ntype == TYPE_V)
+        0 			push!(g,(tt[idx],adj))
+        0 			idx -= 2
+        0 		elseif(ntype == TYPE_O)
+        0 			n = tt[idx]
+        0 			idx -= 3 #skip TYPE_O 
+        0 			@simd for i=length(imm)-n+1:1:length(imm)
+        0 				push!(adjs,imm[i]*adj)
+        - 			end
+        0 			resize!(imm,length(imm)-n)
+        - 		end
+        - 	end
+        - end
+        - 
+        - function grad_struct{I}(tape::Tape{I}, ilist::Array{I,1}) #repeated indexes, in reverse tracing order
+        0 	tt = tape.tt
+        0 	idx = length(tt)
+        0 	@inbounds while(idx > 0)
+        0 		ntype = tt[idx]
+        0 		idx -= 1
+        0 		if(ntype == TYPE_V)
+        0 			push!(ilist,tt[idx])
+        0 			idx -= 2
+        0 		elseif(ntype == TYPE_P)
+        0 			idx -= 2
+        0 		elseif(ntype == TYPE_O)
+        0 			idx -= 3
+        - 		end
+        - 	end
+        - end
+        - 
+        - #Interface function
+        - function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
+        - 	ilist = Array{I,1}()
+        - 	sizehint!(ilist, tape.nvnode)
+        - 	grad_struct(tape,ilist)
+        - 
+        - 	empty!(iset)
+        - 	@simd for i in 1:1:length(ilist)
+        - 		push!(iset,ilist[i])
+        - 	end
+        - end
+        - 
+        - function grad_structure{I}(tape::Tape{I}, ilist::Array{I,1})  #repeat version
+        0 	empty!(ilist)
+        0 	grad_struct(tape,ilist)
+        - end
+        - 
+        - function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{Tuple{I,V},1}) #sparse version
+        0 	empty!(g)
+       64 	imm = Array{V,1}()
+    32032 	sizehint!(imm,tape.nnode-1)			
+        0 	forward_pass(tape,vvals,pvals,imm)
+        0 	reverse_pass(tape,imm,g)
+        - end
+        - 
+        - function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{V,1})  #dense version
+    33648 	grad = Array{Tuple{I,V},1}()
+    12832 	sizehint!(grad,tape.nvnode)
+        0 	grad_reverse(tape,vvals,pvals,grad)
+        - 	
+        0 	fill!(g,zero(V))
+        0 	for (i,v) in grad
+        0 		g[i] += v
+        - 	end
+        - end

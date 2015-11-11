@@ -1,14 +1,12 @@
 #temp2.jl
-include("test_small.jl") 
+include("test_xxxlarge.jl") 
  jd = m.internalModel.evaluator.jd
  ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
- tt = TT_TYPE()
+ tt = Tape{Int}()
  p = TV_TYPE()
  tapeBuilder(ex,tt,p)
 x=rand(m.numCols);
-vals = Array{Float64,1}()
-nvals = Array{Float64,1}()
 
 @time ReverseDiffTape.feval(tt,x,p)
 @time MathProgBase.eval_f(jd,x)
@@ -16,6 +14,32 @@ nvals = Array{Float64,1}()
 Profile.clear_malloc_data()
 @time ReverseDiffTape.feval(tt,x,p)
 @time MathProgBase.eval_f(jd,x)
+
+
+gI = Array{Int,1}()
+sizehint!(gI, tt.nvnode)
+@time ReverseDiffTape.grad_structure(tt,gI)
+g = Array{Float64,1}(length(x))
+@time ReverseDiffTape.grad_reverse(tt,x,p,g)
+
+jg = Array{Float64,1}(length(x));
+@time MathProgBase.eval_grad_f(jd,jg,x)
+
+TapeInterface.assertArrayEqualEps(g,jg)
+
+Profile.clear_malloc_data()
+gtuple = Array{Tuple{Int,Float64},1}();
+sizehint!(gtuple, tt.nvnode)
+@time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
+
+
+
+
+imm = Array{Float64,1}()
+@time ReverseDiffTape.forward_pass(tt,x,p,imm)
+g=Array{Tuple{IDX_TYPE,VV_TYPE},1}()
+ReverseDiffTape.reverse_pass(tt,imm,g)
+ReverseDiffTape.grad_structure(tt,ilist)
 
 
 sum{ 0.5*h*(u[i+1]^2 + u[i]^2) + 0.5*alpha*h*(cos(    t[i+1]) + cos(t[i])), i = 1:ni}
@@ -98,6 +122,9 @@ end
 	@show args
 	return Expr(:call,args...)
 end
+
+
+
 
 function mysum(x)
 	result = 0.0

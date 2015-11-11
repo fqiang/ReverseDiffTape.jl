@@ -44,7 +44,7 @@ end
 
 #show be auto generated code
 function eval_idd{V,I}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
-	if(s==:sin)
+	@inbounds if(s==:sin)
 		ld = cos(v[i])
 		push!(imm,ld)
 		r[1] = sin(v[i])
