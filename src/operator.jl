@@ -19,29 +19,25 @@ const U_OP_END = length(OP)
 
 ##########################################################################################
 #
-# Operator overload for types
+# Operator overload for types to build tape
+# 	tape memory nvnode is not initilized
 #
 ##########################################################################################
 for oc = B_OP_START:1:B_OP_END
 	o = OP[oc]
 	S_TO_OC[o] = oc
-	@eval 	($o){I,V}(l::Placeholder{I,V},r::Placeholder{I,V}) = 
+	@eval 	($o){I}(l::AD{I},r::AD{I}) = 
 			begin
-				assert(l.tape == r.tape)
-				tape = l.tape
-				return AD_O{I,V}(tape,$(quot(o)),l,r)
+				return AD_O($(quot(o)),l,r)
 			end
 end
-
 
 for oc = U_OP_START:1:U_OP_END
 	o = OP[oc]
 	S_TO_OC[o] = oc
-
-	@eval 	($o)(l::Placeholder) = 
+	@eval 	($o){I}(l::AD{I}) = 
 			begin
-				tape = l.tape
-				return AD_O(tape,$(quot(o)),l)
+				return AD_O($(quot(o)),l)
 			end
 end
 ##########################################################################################
@@ -83,6 +79,7 @@ end
 ##########################################################################################
 #
 # tape builder from a Julia Expr type
+#	tape memory property is initialized 
 #
 ##########################################################################################
 
