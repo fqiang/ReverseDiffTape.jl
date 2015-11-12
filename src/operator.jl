@@ -40,6 +40,10 @@ for oc = U_OP_START:1:U_OP_END
 				return AD_O($(quot(o)),l)
 			end
 end
+
+(+){I}(l::AD{I}, args...) = AD_O(:+,tuple(l,args...))
+(*){I}(l::AD{I}, args...) = AD_O(:*,tuple(l,args...))
+
 ##########################################################################################
 
 switchblock = Expr(:block)
