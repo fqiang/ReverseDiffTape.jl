@@ -2,13 +2,13 @@
 # forward pass on the tape tt, to build ss stack
 
 #forward pass on the scalar function
-function forward_pass{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	v = [zero(V)]
 	stk = Array{V,1}() #used for value evaluation
 	empty!(imm)  #used for immediate derrivative
-	sizehint!(stk,tape.maxoperands)
+	sizehint!(stk,tape.maxoperands+20)
 	sizehint!(v,1)
 
 	@inbounds while(idx <= length(tt))
@@ -31,7 +31,7 @@ function forward_pass{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, 
 			idx += 1 #skip TYPE_O
 			# @show OP[oc],stk
 			# @show OP[oc], length(stk)-n+1, n
-			eval_idd(OP[oc],stk,length(stk)-n+1,imm,v)
+			eval_1ord(OP[oc],stk,length(stk)-n+1,imm,v)
 			# @show imm
 			# @show v
 			resize!(stk,length(stk)-n+1)
@@ -42,11 +42,11 @@ function forward_pass{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, 
 	# @show stk
 end
 
-function reverse_pass{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
+function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
 	tt = tape.tt
 	idx = length(tt)
 	adjs = Array{V,1}()
-	sizehint!(adjs, round(I,length(tt)/10))  #random guessing size, the acutally size should be (depth_of_tree - current_depth + maxoperands)
+	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
 	push!(adjs,one(V))  #init value 
 
 	@inbounds while(idx > 0)
@@ -108,8 +108,8 @@ function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g:
 	empty!(g)
 	imm = Array{V,1}()
 	sizehint!(imm,tape.nnode-1)			
-	forward_pass(tape,vvals,pvals,imm)
-	reverse_pass(tape,imm,g)
+	forward_pass_1ord(tape,vvals,pvals,imm)
+	reverse_pass_1ord(tape,imm,g)
 end
 
 function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{V,1})  #dense version

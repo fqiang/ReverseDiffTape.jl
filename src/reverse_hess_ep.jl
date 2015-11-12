@@ -82,6 +82,46 @@ function createEdge(tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
 	return e
 end
 
+function forward_pass_2ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+	tt = tape.tt
+	idx = one(I)
+	v = [zero(V)]
+	stk = Array{V,1}() #used for value evaluation
+	empty!(imm)  #used for immediate derrivative
+	sizehint!(stk,tape.maxoperands+20) #plus depth, should work out this number 
+	sizehint!(v,1)
+
+	@inbounds while(idx <= length(tt))
+		# @show idx
+		# println("++++++++++++++++++++++++++++++++++++")
+		ntype = tt[idx]
+		idx += 1
+		if(ntype == TYPE_P)
+			# tic()
+			push!(stk,pvals[tt[idx]])	
+			idx += 2 #skip TYPE_P
+		elseif(ntype == TYPE_V)
+			push!(stk,vvals[tt[idx]])
+			idx += 2 #skip TYPE_V
+		elseif(ntype == TYPE_O)
+			oc = tt[idx]
+			idx += 1
+			n = tt[idx]
+			idx += 2 #skip TYPE_O
+			# @show OP[oc],stk
+			# @show OP[oc], length(stk)-n+1, n
+			eval_2ord(OP[oc],stk,length(stk)-n+1,imm,v)
+			# @show imm
+			# @show v
+			resize!(stk,length(stk)-n+1)
+			stk[end] = v[1]
+		end
+		# println("++++++++++++++++++++++++++++++++++++")
+	end
+	# @show stk
+end
+
+
 function reverse_hess_ep0{I}(tape::Tape{I}, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
 	assert(idx != 0)
 	val = NaN
