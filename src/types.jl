@@ -1,11 +1,6 @@
 
 #type alias
-typealias VV_TYPE Float64
-typealias IDX_TYPE Int
 typealias OP_TYPE Int
-typealias TT_TYPE Array{IDX_TYPE,1}
-typealias TV_STACK Stack
-typealias TV_TYPE Array{VV_TYPE,1}
 
 
 #the AD types below

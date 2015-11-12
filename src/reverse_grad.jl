@@ -42,57 +42,6 @@ function forward_pass{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, 
 	# @show stk
 end
 
-#show be auto generated code
-function eval_idd{V,I}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
-	@inbounds if(s==:sin)
-		ld = cos(v[i])
-		push!(imm,ld)
-		r[1] = sin(v[i])
-	elseif(s==:cos)
-		ld = -sin(v[i])
-		push!(imm,ld)
-		r[1] = cos(v[i])
-	elseif(s ==:+)
-		ret = zero(V)
-		@simd for j=i:1:length(v)
-			push!(imm,one(V))
-			ret += v[j]
-		end
-		r[1] = ret
-	elseif(s ==:-)
-		push!(imm,one(V))
-		push!(imm,-one(V))
-		r[1] = (-)(v[i],v[i+1])
-	elseif(s==:*)
-		# for i=length(v)-n+1:1:length(v)
-			# ret = one(V)
-			# for j=length(v)-n+1:1:i
-			# 	ret *= v[j]
-			# end
-			# for j=i+1:1:length(v)
-			# 	ret *= v[j]
-			# end
-		ret = one(V)
-		@simd for j = i:1:length(v)
-			ret *= v[j]
-		end
-		r[1] = ret
-		@simd for j = i:1:length(v)
-			push!(imm,r[1]/v[j])
-		end
-	elseif(s==:/)
-		r[1] = (/)(v[i],v[i+1])
-		push!(imm,one(V)/v[i+1])
-		push!(imm,-v[i]/v[i+1]^2)
-		
-	elseif(s==:^)
-		r[1] = (^)(v[i],v[i+1])
-		push!(imm,v[i+1]*(v[i]^(v[i+1]-1)))
-		push!(imm,r[1]*(log(v[i])))
-	end
-end
-
-
 function reverse_pass{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
 	tt = tape.tt
 	idx = length(tt)
@@ -145,7 +94,7 @@ function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	grad_struct(tape,ilist)
 
 	empty!(iset)
-	@simd for i in 1:1:length(ilist)
+	@inbounds @simd for i in 1:1:length(ilist)
 		push!(iset,ilist[i])
 	end
 end
@@ -169,7 +118,7 @@ function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g:
 	grad_reverse(tape,vvals,pvals,grad)
 	
 	fill!(g,zero(V))
-	for (i,v) in grad
-		g[i] += v
+	@inbounds @simd for i = 1:1:length(grad)
+		g[grad[i][1]] += grad[i][2]
 	end
 end

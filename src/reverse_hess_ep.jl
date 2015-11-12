@@ -1,12 +1,31 @@
+typealias IDX_TYPE Int
+typealias VV_TYPE Float64
+typealias OP_TYPE Int
+typealias TT_TYPE Array{IDX_TYPE,1}
+typealias TV_STACK Stack
+typealias TV_TYPE Array{VV_TYPE,1}
+
+
 #edge pusing algorithm for Hessian reverse AD
-immutable Edge
-	tt::TT_TYPE
-    lidx::IDX_TYPE
-    ridx::IDX_TYPE
+immutable Edge{I}
+    lidx::I
+    ridx::I
+end
+
+typealias EdgeSet{I,V} Dict{Edge{I},V}
+
+function Base.show(io::IO, e::Edge)
+	print(io,"Edge (",e.lidx, ",", e.ridx,")")
+end
+function Base.show(io::IO, eset::EdgeSet)
+	state = start(eset)
+	while !done(eset,state)
+		(pair,state) = next(eset,state)
+		println(io,pair[1],"=",pair[2])
+	end
 end
 
 function Base.isequal(e1::Edge, e2::Edge)
-	# println("isequal, ", e1, ":",e2)
 	# assert(e1.tt == e2.tt)  # important ! - can be on different tape if following same context
 	return (e1.lidx == e2.lidx && e1.ridx == e2.ridx) || (e1.lidx == e2.ridx && e1.ridx == e2.lidx)
 end
@@ -19,9 +38,6 @@ function Base.hash(e::Edge)
 	end
 	return hash(v)
 end
-
-typealias EdgeSet Dict{Edge,VV_TYPE}
-
 
 function isEndPointOnEdge(e::Edge, idx::IDX_TYPE)
 	return (e.lidx == idx ) || (e.ridx == idx  )
@@ -59,42 +75,14 @@ function isBothVariable(e::Edge)
 	return e.tt[lidx] == TYPE_V && e.tt[ridx] == TYPE_V
 end
 
-function Base.show(io::IO, e::Edge)
-	print(io,"Edge (",e.lidx, ",", e.ridx,")")
-end
-function Base.show(io::IO, eset::EdgeSet)
-	state = start(eset)
-	while !done(eset,state)
-		(pair,state) = next(eset,state)
-		println(io,pair[1],"=",pair[2])
-	end
-end
+
 
 function createEdge(tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
 	e = Edge(tt,lidx,ridx)
 	return e
 end
 
-# function createEdge(eset::EdgeSet, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE, w::VV_TYPE=0.0)
-# 	e = Edge(tt,lidx,ridx)
-# 	# println("create edge: ",e)
-# 	if(!haskey(eset,e))
-# 		# println("create edge: ",e)
-# 		eset[e] = w
-# 	else
-# 		# println("already exist: ",e)
-# 	end
-# 	return e
-# end
-
-# function createEdge(eset::Set{Edge}, tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
-# 	e = Edge(tt,lidx,ridx)
-# 	# println("create edge: ",e)
-# 	push!(eset,e)
-# 	return e
-# end
-
-function reverse_hess_ep0(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
+function reverse_hess_ep0{I}(tape::Tape{I}, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
 	assert(idx != 0)
 	val = NaN
 	ntype = tt[idx]

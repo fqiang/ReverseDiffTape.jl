@@ -34,6 +34,18 @@ sizehint!(gtuple, tt.nvnode)
 
 
 
+##########  test build using types
+p = Array{Float64,1}()
+	x = Array{Float64,1}()
+	x1 = AD_V(x, 1.1)
+	x2 = AD_V(x, 2.2)
+	x3 = AD_V(x, 3.3)
+	p1 = AD_P(p, 1)
+	p2 = AD_P(p, 2)
+	c=+(x1,x2,x3)
+	tt=tapeBuilder(c.data)
+	feval(tt,x,p)
+#############
 
 imm = Array{Float64,1}()
 @time ReverseDiffTape.forward_pass(tt,x,p,imm)

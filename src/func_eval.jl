@@ -9,9 +9,9 @@ function forward_evaluate{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,
 	sizehint!(v,1)
 	sizehint!(vals,tape.maxoperands)
 	
-	while(idx <= length(tt))
+	@inbounds while(idx <= length(tt))
 		# @show idx
-		@inbounds ntype = tt[idx]
+		ntype = tt[idx]
 		idx += 1
 		v[1] = zero(V)
 		if(ntype == TYPE_P)
