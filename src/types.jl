@@ -81,7 +81,8 @@ function AD_P{V}(pvals::Array{V,1},val)
 	return this
 end
 
-function AD_O(s::Symbol,args)
+function AD_O(s::Symbol,args...)
+	@show s
 	# @show args
 	# @show typeof(args)
 	n = length(args)
