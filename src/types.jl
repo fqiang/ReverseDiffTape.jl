@@ -31,12 +31,6 @@ type Tape{I<:Int}
 	end
 end
 
-function tapeBuilder{I}(data::Array{I,1})
-	tape = Tape{I}(data)
-	analysize_tape(tape)
-	return tape
-end
-
 function analysize_tape{I}(tape::Tape{I})
 	tt = tape.tt
 	idx = one(I)

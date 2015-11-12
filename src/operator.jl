@@ -134,5 +134,15 @@ function tapeBuilder(expr::Real, tape::Tape{IDX_TYPE}, pvals::TV_TYPE,vset::Set{
 	push!(tt,TYPE_P)
 	tape.nnode += 1
 end
+
 ##########################################################################################
+#
+# tape builder from types
+#
+##########################################################################################
+function tapeBuilder{I}(data::Array{I,1})
+	tape = Tape{I}(data)
+	return tape
+end
+
 
