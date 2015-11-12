@@ -1,15 +1,13 @@
 module ReverseDiffTape
 
 using DataStructures
-using Logging
-using Calculus
 
 importall Base
 
 # package code goes here
 function __init__()
-	Logging.configure(level=DEBUG)
-	debug("loading ReverseDiffTape.jl")
+	# Logging.configure(level=DEBUG)
+	println("loading ReverseDiffTape.jl")
 end
 
 export
@@ -29,6 +27,5 @@ include("./operator.jl")
 include("./func_eval.jl")
 include("./reverse_grad.jl")
 include("./reverse_hess_ep.jl")
-
 
 end # module

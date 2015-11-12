@@ -81,20 +81,28 @@ function AD_P{V}(pvals::Array{V,1},val)
 	return this
 end
 
-function AD_O(s::Symbol,args...)
+function AD_O{I}(s::Symbol,l::AD{I})
 	@show s
+	this = AD{I}(Array{I,1}())
+	append!(this.data,l.data)
+	push!(this.data,TYPE_O)
+	push!(this.data,S_TO_OC[s])
+	push!(this.data,1) #1 operand simply 
+	push!(this.data,TYPE_O)
+end
+function AD_O{I,N}(s::Symbol,args::NTuple{N,AD{I}})
+	# @show s
 	# @show args
-	# @show typeof(args)
-	n = length(args)
+	# @show N
 	# @show n
-	assert(n>=1)
-	this = AD{Int}(Array{Int,1}())
-	@simd for i = 1:1:n
+	assert(N>1)
+	this = AD{I}(Array{I,1}())
+	@simd for i = 1:1:N
 		append!(this.data,args[i].data)
 	end
 	push!(this.data,TYPE_O)
 	push!(this.data,S_TO_OC[s])
-	push!(this.data,n) 
+	push!(this.data,N) 
 	push!(this.data,TYPE_O)
 	return this
 end

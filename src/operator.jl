@@ -1,6 +1,7 @@
 
 import Lazy
 using Base.Meta
+using Calculus
 
 #Operator overloading function for AD types
 const B_OP_START = 1
