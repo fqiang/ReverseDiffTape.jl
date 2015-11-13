@@ -94,7 +94,7 @@ function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	grad_struct(tape,ilist)
 
 	empty!(iset)
-	@inbounds @simd for i in 1:length(ilist)
+	@inbounds for i in 1:length(ilist)
 		push!(iset,ilist[i])
 	end
 end

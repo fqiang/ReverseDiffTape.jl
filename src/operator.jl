@@ -133,16 +133,19 @@ end
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 # @eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})  
 @eval function eval_0ord{I,V}(s::Symbol, v::MyArray{V}, i::I, r::Array{V,1})  #to use MyArray
+    @show s,v
     if s == :+
-        counter = zero(V)
-        @simd for j in i:length(v)
+    	# a = v.a
+    	counter = zero(V)
+        for j in i:length(v)
             @inbounds counter += v[j]
         end
         @inbounds r[1] = counter
         return
     elseif s == :*
+        # a = v.a
         counter = v[i]
-        @simd for j = i+1:length(v)
+        for j = i+1:length(v)
             @inbounds counter *= v[j]
         end
         @inbounds r[1] = counter

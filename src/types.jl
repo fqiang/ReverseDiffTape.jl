@@ -18,43 +18,50 @@ importall Base
 
 type MyArray{V}
 	a::Array{V,1}
-	len::Integer
-	maxlen::Integer
-
-	function MyArray(max_sz::Integer)
-		# @show max_sz
-		a=Array{V,1}(max_sz)
-		sizehint!(a,max_sz)
-		return new(a,0,max_sz)
-	end 
+	len::Int
+	maxlen::Int
 end
+
+call{V}(::Type{MyArray{V}},max_sz::Int) = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
+#  	this = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
+#  	fill!(this.a,0.0)
+#  	return this
+# end
 
 function push!{V}(a::MyArray{V},v::V)
-	# @show a.len
-	# assert(a.len+1<=a.maxlen)
+	println("push!, a, v")
+	@show v
+	@show a
+	assert(a.len+1<=a.maxlen)
 	a.len += 1
 	@inbounds a.a[a.len] = v
+	@show a
 end
 
-function resize!{V}(a::MyArray{V},sz::Integer)
+function resize!{V}(a::MyArray{V},sz::Int)
 	a.len = sz
 end
 
-function length{V}(a::MyArray{V})
+function length(a::MyArray)
 	return a.len
 end
 
 function getindex{V}(a::MyArray{V},i::Int)
-	# assert(i<=a.maxlen)
+	assert(i<=a.maxlen)
 	return a.a[i]
 end
 
 function setindex!{V}(a::MyArray{V},v::V,i::Int)
-	# assert(i<=a.maxlen)
+	assert(i<=a.maxlen)
 	@inbounds a.a[i] = v
 end
 
-endof{V}(a::MyArray{V}) = length(a)
+endof(a::MyArray) = length(a)
+
+
+function Base.show(io::IO,m::MyArray)
+	println(io,m.a[1:m.len],",",m.len,",",m.maxlen)
+end
 
 ##############################################################################
 

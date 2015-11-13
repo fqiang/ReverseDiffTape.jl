@@ -7,6 +7,56 @@ typealias TV_TYPE Array{VV_TYPE,1}
 
 
 #edge pusing algorithm for Hessian reverse AD
+
+typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
+
+function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1})
+	tt = tape.tt
+	idx = one(I)
+	v = [zero(V)]
+	empty!(imm)  #used for immediate derrivative
+	empty!(tr)
+	stk = Array{V,1}() #used for value evaluation
+	istk = Array{I,1}()
+	sizehint!(stk,tape.maxoperands+20) #plus depth, should work out this number 
+	sizehint!(istk,tape.maxoperands+20) #plus depth, should work out this number 
+	sizehint!(v,1)
+
+	@inbounds while(idx <= length(tt))
+		# @show idx
+		# println("++++++++++++++++++++++++++++++++++++")
+		ntype = tt[idx]
+		idx += 1
+		if(ntype == TYPE_P)
+			push!(istk,idx-1)
+			push!(stk,pvals[tt[idx]])	
+			idx += 2 #skip TYPE_P
+		elseif(ntype == TYPE_V)
+			push!(istk,idx-1)
+			push!(stk,vvals[tt[idx]])
+			idx += 2 #skip TYPE_V
+		elseif(ntype == TYPE_O)
+			oc = tt[idx]
+			idx += 1
+			n = tt[idx]
+			idx += 2 #skip TYPE_O
+			# @show OP[oc], length(stk)-n+1, n
+			# @show stk
+			eval_2ord(OP[oc],stk,length(stk)-n+1,imm,v)
+			append!(tr,istk[length(istk)-n+1:end])
+			# @show imm
+			# @show v
+			resize!(stk,length(stk)-n+1)
+			resize!(istk,length(istk)-n+1)
+			stk[end] = v[1]
+			istk[end] = idx-4
+		end
+		# println("++++++++++++++++++++++++++++++++++++")
+	end
+	# @show stk
+end
+
+
 immutable Edge{I} 
     lidx::I
     ridx::I
@@ -25,7 +75,6 @@ immutable WEdge{I,V}
 	end
 end
 
-typealias EdgeSet Dict{Edge{Int},Float64}
 
 function Base.show(io::IO, e::Edge)
 	print(io,"Edge (",e.lidx, ",", e.ridx,")")
@@ -88,53 +137,9 @@ function isBothVariable(e::Edge)
 	return e.tt[lidx] == TYPE_V && e.tt[ridx] == TYPE_V
 end
 
-function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1})
-	tt = tape.tt
-	idx = one(I)
-	v = [zero(V)]
-	empty!(imm)  #used for immediate derrivative
-	empty!(tr)
-	stk = Array{V,1}() #used for value evaluation
-	istk = Array{I,1}()
-	sizehint!(stk,tape.maxoperands+20) #plus depth, should work out this number 
-	sizehint!(istk,tape.maxoperands+20) #plus depth, should work out this number 
-	sizehint!(v,1)
 
-	@inbounds while(idx <= length(tt))
-		# @show idx
-		# println("++++++++++++++++++++++++++++++++++++")
-		ntype = tt[idx]
-		idx += 1
-		if(ntype == TYPE_P)
-			push!(istk,idx-1)
-			push!(stk,pvals[tt[idx]])	
-			idx += 2 #skip TYPE_P
-		elseif(ntype == TYPE_V)
-			push!(istk,idx-1)
-			push!(stk,vvals[tt[idx]])
-			idx += 2 #skip TYPE_V
-		elseif(ntype == TYPE_O)
-			oc = tt[idx]
-			idx += 1
-			n = tt[idx]
-			idx += 2 #skip TYPE_O
-			# @show OP[oc], length(stk)-n+1, n
-			# @show stk
-			eval_2ord(OP[oc],stk,length(stk)-n+1,imm,v)
-			append!(tr,istk[length(istk)-n+1:end])
-			# @show imm
-			# @show v
-			resize!(stk,length(stk)-n+1)
-			resize!(istk,length(istk)-n+1)
-			stk[end] = v[1]
-			istk[end] = idx-4
-		end
-		# println("++++++++++++++++++++++++++++++++++++")
-	end
-	# @show stk
-end
 
-function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet)
+function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
 	tt = tape.tt
 	idx = length(tt)
 	adjs = Array{V,1}()
@@ -142,18 +147,26 @@ function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},ese
 	push!(adjs,one(V))  #init value 
 
 	@inbounds while(idx > 0)
+		cidx = idx
 		ntype = tt[idx]
 		idx -= 1
 		adj = pop!(adjs)
 		if(ntype == TYPE_P)
 			idx -= 2
+			delete!(eset,cidx)
 		elseif(ntype == TYPE_V)
-			push!(g,(tt[idx],adj))
 			idx -= 2
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 3 #skip TYPE_O 
-			@simd for i=length(imm)-n+1:1:length(imm)
+			#pushing
+
+
+			#creating
+
+
+			#adj
+			@simd for i=length(imm)-n+1:length(imm)
 				push!(adjs,imm[i]*adj)
 			end
 			resize!(imm,length(imm)-n)
