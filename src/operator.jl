@@ -64,7 +64,7 @@ const U_OP_END = length(OP)
 # 	tape statistic is not initialized
 #
 ##########################################################################################
-for oc = B_OP_START:1:B_OP_END
+for oc = B_OP_START:B_OP_END
 	o = OP[oc]
 	S_TO_OC[o] = oc
 	@eval 	($o){I}(l::AD{I},r::AD{I}) = 
@@ -73,7 +73,7 @@ for oc = B_OP_START:1:B_OP_END
 			end
 end
 
-for oc = U_OP_START:1:U_OP_END
+for oc = U_OP_START:U_OP_END
 	o = OP[oc]
 	S_TO_OC[o] = oc
 	@eval 	($o){I}(l::AD{I}) = 
@@ -102,7 +102,7 @@ function replace_sym(s::Symbol,ex::Symbol,r::Expr)
 	end
 end
 function replace_sym(s::Symbol,ex::Expr, r::Expr) 
-	for i = 1:1:length(ex.args)
+	for i = 1:length(ex.args)
 		ex.args[i] = replace_sym(s,ex.args[i],r)
 	end
 	return ex
@@ -114,12 +114,12 @@ end
 #
 ##########################################################################################
 switchblock = Expr(:block)
-for i = U_OP_START:1:U_OP_END
+for i = U_OP_START:U_OP_END
 	ex = parse("@inbounds r[1]=$(OP[i])(v[i])")
     push!(switchblock.args,quot(OP[i]),ex)
 end
 
-for i = B_OP_START:1:B_OP_END
+for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
 	if(o==:+ || o==:*)
@@ -131,17 +131,18 @@ for i = B_OP_START:1:B_OP_END
 end
 
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-@eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})
+# @eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})  
+@eval function eval_0ord{I,V}(s::Symbol, v::MyArray{V}, i::I, r::Array{V,1})  #to use MyArray
     if s == :+
         counter = zero(V)
-        for j in i:length(v)
+        @simd for j in i:length(v)
             @inbounds counter += v[j]
         end
         @inbounds r[1] = counter
         return
     elseif s == :*
         counter = v[i]
-        for j = i+1:length(v)
+        @simd for j = i+1:length(v)
             @inbounds counter *= v[j]
         end
         @inbounds r[1] = counter
@@ -154,7 +155,7 @@ end
 
 switchblock = Expr(:block)
 # @show switchblock
-for i = U_OP_START:1:U_OP_END
+for i = U_OP_START:U_OP_END
 	o = OP[i]
 	dx = S_TO_DIFF[o][1]
 	dx = replace_sym(:x,dx,"v[i]")
@@ -165,18 +166,20 @@ for i = U_OP_START:1:U_OP_END
 	push!(switchblock.args,quot(o),ex)
 end
 
-for i = B_OP_START:1:B_OP_END
+for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+)
-		push!(ex.args,parse("ret = zero(V)"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n push!(imm,one(V)) \n ret += v[j] \n end"))
-		push!(ex.args,parse("r[1] = ret"))
-	elseif(o==:*)
-		push!(ex.args,parse("ret = one(V)"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n ret *= v[j] \n end"))
-		push!(ex.args,parse("r[1] = ret"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n push!(imm,r[1]/v[j]) \n end"))
+	if(o==:+ || o==:*)
+		continue
+	# if(o==:+)
+	# 	push!(ex.args,parse("ret = zero(V)"))
+	# 	push!(ex.args,parse("@simd for j=i:length(v) \n push!(imm,one(V)) \n ret += v[j] \n end"))
+	# 	push!(ex.args,parse("r[1] = ret"))
+	# elseif(o==:*)
+	# 	push!(ex.args,parse("ret = one(V)"))
+	# 	push!(ex.args,parse("@simd for j=i:length(v) \n ret *= v[j] \n end"))
+	# 	push!(ex.args,parse("r[1] = ret"))
+	# 	push!(ex.args,parse("@simd for j=i:length(v) \n push!(imm,r[1]/v[j]) \n end"))
 	else
 		(dx,dy) = S_TO_DIFF[o]
 		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
@@ -194,6 +197,25 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 
 #should be auto generated code
 @eval function eval_1ord{I,V}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
+	@inbounds if s==:+
+		ret = zero(V)
+		@simd for j=i:length(v) 
+			push!(imm,one(V))
+			ret += v[j]
+		end
+		r[1] = ret
+		return
+	elseif s==:*
+		ret = one(V)
+		@simd for j=i:length(v) 
+			ret *= v[j] 
+		end
+		r[1] = ret
+		@simd for j=i:length(v)
+			push!(imm,r[1]/v[j]) 
+		end
+		return
+	end
 	@inbounds $switchexpr
 end
 
@@ -201,7 +223,7 @@ end
 
 switchblock = Expr(:block)
 # @show switchblock
-for i = U_OP_START:1:U_OP_END
+for i = U_OP_START:U_OP_END
 	o = OP[i]
 	(dx,dxx) = S_TO_DIFF[o]
 	dx = replace_sym(:x,dx,"v[i]")
@@ -214,24 +236,24 @@ for i = U_OP_START:1:U_OP_END
 	push!(switchblock.args,quot(o),ex)
 end
 
-for i = B_OP_START:1:B_OP_END
+for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
 	if(o==:+)
 		push!(ex.args,parse("ret = zero(V)"))
 		#do not put second order , since all zeros
 		#do not put first order , since all one
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n ret += v[j] \n end"))
+		push!(ex.args,parse("@simd for j=i:length(v) \n ret += v[j] \n end"))
 		push!(ex.args,parse("r[1] = ret"))
 	elseif(o==:*)
 		push!(ex.args,parse("ret = one(V)"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n ret *= v[j] \n end"))
+		push!(ex.args,parse("@simd for j=i:length(v) \n ret *= v[j] \n end"))
 		push!(ex.args,parse("r[1] = ret"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
-				# for j=i:1:length(v)
+		push!(ex.args,parse("@simd for j=i:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
+				# for j=i:length(v)
 				# 	dxj = r[1]/v[j]
 				# 	push!(imm,dxj)  #first order
-				# 	for k=j+1:1:length(v)
+				# 	for k=j+1:length(v)
 				# 		dxjk = dxj/v[k]
 				# 		push!(imm,dxjk)  #every cross second order, diagonal is zero not pushed. 
 				# 	end
@@ -298,7 +320,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set
 		# @show expr.args[2]
 		op = expr.args[1]
 		assert(typeof(op)==Symbol)
-		for i in 2:1:length(expr.args)
+		for i in 2:length(expr.args)
 			tapeBuilder(expr.args[i],tape,pvals,vset)
 		end
 

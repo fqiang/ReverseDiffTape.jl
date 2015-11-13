@@ -3,11 +3,14 @@
 function forward_pass_0ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
-	stk = Array{V,1}()
+	
+	# stk = Array{V,1}()
+	# sizehint(stk, tape.maxoperands+20)
+	stk = MyArray{V}(tape.maxoperands+20) #to use MyArray
+	
 	v = [zero(V)]
-
 	sizehint!(v,1)
-	sizehint!(stk,tape.maxoperands+20) #plus depth of tree
+	# sizehint!(stk,tape.maxoperands+20) #plus depth of tree
 	
 	@inbounds while(idx <= length(tt))
 		# @show idx

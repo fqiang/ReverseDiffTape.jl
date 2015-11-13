@@ -1,10 +1,10 @@
 #temp2.jl
-include("test_xxxlarge.jl") 
+include("test_megalarge.jl") 
  jd = m.internalModel.evaluator.jd
  ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
  tt = Tape{Int}()
- p = TV_TYPE()
+ p = Array{Float64,1}()
  tapeBuilder(ex,tt,p)
 x=rand(m.numCols);
 
@@ -19,9 +19,9 @@ Profile.clear_malloc_data()
 gI = Array{Int,1}()
 sizehint!(gI, tt.nvnode)
 @time ReverseDiffTape.grad_structure(tt,gI)
+
 g = Array{Float64,1}(length(x));
 @time ReverseDiffTape.grad_reverse(tt,x,p,g)
-
 jg = Array{Float64,1}(length(x));
 @time MathProgBase.eval_grad_f(jd,jg,x)
 
@@ -107,6 +107,26 @@ end
 function getll(n)
 	t = length(n)
 	return t
+end
+
+ 
+function bar1(tt::Array{Int,1})
+	tt_cp = Array{Int,1}()
+	for i in tt
+       push!(tt_cp,i)
+    end
+    return tt_cp
+end
+
+
+function bar2(tt::Array{Int,1})
+	tt_cp = Array{Int,1}()
+	i=1
+	while i<=length(tt)
+       push!(tt_cp,tt[i])
+       i += 1
+    end
+    return tt_cp
 end
 
 

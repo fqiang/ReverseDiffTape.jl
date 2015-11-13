@@ -8,6 +8,56 @@ const TYPE_V = 1	#variable node
 const TYPE_P = 2	#param node
 const TYPE_O = 3
 
+
+##############################################################################
+# 
+# MyArray type encapsulate a julia array 1-dim
+#
+##############################################################################
+importall Base
+
+type MyArray{V}
+	a::Array{V,1}
+	len::Integer
+	maxlen::Integer
+
+	function MyArray(max_sz::Integer)
+		# @show max_sz
+		a=Array{V,1}(max_sz)
+		sizehint!(a,max_sz)
+		return new(a,0,max_sz)
+	end 
+end
+
+function push!{V}(a::MyArray{V},v::V)
+	# @show a.len
+	# assert(a.len+1<=a.maxlen)
+	a.len += 1
+	@inbounds a.a[a.len] = v
+end
+
+function resize!{V}(a::MyArray{V},sz::Integer)
+	a.len = sz
+end
+
+function length{V}(a::MyArray{V})
+	return a.len
+end
+
+function getindex{V}(a::MyArray{V},i::Int)
+	# assert(i<=a.maxlen)
+	return a.a[i]
+end
+
+function setindex!{V}(a::MyArray{V},v::V,i::Int)
+	# assert(i<=a.maxlen)
+	@inbounds a.a[i] = v
+end
+
+endof{V}(a::MyArray{V}) = length(a)
+
+##############################################################################
+
 type Tape{I<:Int}
 	tt::Array{I,1}
 	nvar::I

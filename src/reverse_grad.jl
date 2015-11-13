@@ -62,7 +62,7 @@ function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 3 #skip TYPE_O 
-			@simd for i=length(imm)-n+1:1:length(imm)
+			@simd for i=length(imm)-n+1:length(imm)
 				push!(adjs,imm[i]*adj)
 			end
 			resize!(imm,length(imm)-n)
@@ -94,7 +94,7 @@ function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	grad_struct(tape,ilist)
 
 	empty!(iset)
-	@inbounds @simd for i in 1:1:length(ilist)
+	@inbounds @simd for i in 1:length(ilist)
 		push!(iset,ilist[i])
 	end
 end
@@ -118,7 +118,7 @@ function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g:
 	grad_reverse(tape,vvals,pvals,grad)
 	
 	fill!(g,zero(V))
-	@inbounds @simd for i = 1:1:length(grad)
+	@inbounds @simd for i = 1:length(grad)
 		g[grad[i][1]] += grad[i][2]
 	end
 end
