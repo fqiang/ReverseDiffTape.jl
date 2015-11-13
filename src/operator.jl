@@ -94,10 +94,7 @@ function replace_sym(s::Symbol,ex::Expr,r::AbstractString)
 	return replace_sym(s,ex,parse(r))
 end
 function replace_sym(s::Symbol,ex::Number,r)
-	if(ex == 1) return parse("one(V)")
-	elseif(ex == 0) return parse("zero(V)") 
-	else return ex
-	end
+	return ex
 end
 function replace_sym(s::Symbol,ex::Symbol,r::Expr)
 	if(ex==s) return r
@@ -134,7 +131,7 @@ for i = B_OP_START:1:B_OP_END
 end
 
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-@eval function eval_0ord{V,I}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})
+@eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})
     if s == :+
         counter = zero(V)
         for j in i:length(v)
@@ -198,7 +195,7 @@ end
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 
 #should be auto generated code
-@eval function eval_1ord{V,I}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
+@eval function eval_1ord{I,V}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
 	@inbounds $switchexpr
 end
 
@@ -224,20 +221,30 @@ for i = B_OP_START:1:B_OP_END
 	ex = Expr(:block)
 	if(o==:+)
 		push!(ex.args,parse("ret = zero(V)"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n push!(imm,one(V)) \n ret += v[j] \n end"))
+		#do not put second order , since all zeros
+		#do not put first order , since all one
+		push!(ex.args,parse("@simd for j=i:1:length(v) \n ret += v[j] \n end"))
 		push!(ex.args,parse("r[1] = ret"))
 	elseif(o==:*)
 		push!(ex.args,parse("ret = one(V)"))
 		push!(ex.args,parse("@simd for j=i:1:length(v) \n ret *= v[j] \n end"))
 		push!(ex.args,parse("r[1] = ret"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n push!(imm,r[1]/v[j]) \n end"))
+		push!(ex.args,parse("@simd for j=i:1:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
+				# for j=i:1:length(v)
+				# 	dxj = r[1]/v[j]
+				# 	push!(imm,dxj)  #first order
+				# 	for k=j+1:1:length(v)
+				# 		dxjk = dxj/v[k]
+				# 		push!(imm,dxjk)  #every cross second order, diagonal is zero not pushed. 
+				# 	end
+				# end
 	else
 		(dx,dy,dxx,dyy,dxy) = S_TO_DIFF[o]
 		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
 		dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
 		dxx = replace_sym(:y,replace_sym(:x,dxx,"v[i]"),"v[i+1]")
-		dyy = replace_sym(:y,replace_sym(:x,dyy,"v[i]"),"v[i+1]")
 		dxy = replace_sym(:y,replace_sym(:x,dxy,"v[i]"),"v[i+1]")
+		dyy = replace_sym(:y,replace_sym(:x,dyy,"v[i]"),"v[i+1]")
 		# @show dx
 		# @show dy
 		# @show dxx
@@ -247,8 +254,8 @@ for i = B_OP_START:1:B_OP_END
 		push!(ex.args,Expr(:call,:push!,:imm,dx))
 		push!(ex.args,Expr(:call,:push!,:imm,dy))
 		push!(ex.args,Expr(:call,:push!,:imm,dxx))
-		push!(ex.args,Expr(:call,:push!,:imm,dyy))
 		push!(ex.args,Expr(:call,:push!,:imm,dxy))
+		push!(ex.args,Expr(:call,:push!,:imm,dyy))
 		push!(ex.args,parse("r[1]=$(o)(v[i],v[i+1])"))
 	end
 	push!(switchblock.args,quot(o),ex)
@@ -257,7 +264,7 @@ end
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 
 #should be auto generated code
-@eval function eval_2ord{V,I}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
+@eval function eval_2ord{I,V}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
 	@inbounds $switchexpr
 end
 

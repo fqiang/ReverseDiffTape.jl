@@ -82,7 +82,7 @@ function createEdge(tt::TT_TYPE, lidx::IDX_TYPE,ridx::IDX_TYPE)
 	return e
 end
 
-function forward_pass_2ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	v = [zero(V)]
@@ -108,8 +108,8 @@ function forward_pass_2ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 			idx += 1
 			n = tt[idx]
 			idx += 2 #skip TYPE_O
-			# @show OP[oc],stk
 			# @show OP[oc], length(stk)-n+1, n
+			# @show stk
 			eval_2ord(OP[oc],stk,length(stk)-n+1,imm,v)
 			# @show imm
 			# @show v
@@ -121,258 +121,34 @@ function forward_pass_2ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 	# @show stk
 end
 
+function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},eset::EdgeSet)
+	tt = tape.tt
+	idx = length(tt)
+	adjs = Array{V,1}()
+	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
+	push!(adjs,one(V))  #init value 
 
-function reverse_hess_ep0{I}(tape::Tape{I}, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
-	assert(idx != 0)
-	val = NaN
-	ntype = tt[idx]
-	idx -= 1
-	if(ntype == TYPE_P)
-		val = pvals[tt[idx]]
-		idx -= 1
-	elseif(ntype == TYPE_V)
-		val = vvals[tt[idx]]
-		idx -= 1
-	elseif(ntype == TYPE_OB)
-		oc = tt[idx]
-		assert(B_OP_START<= oc <= B_OP_END)
-		idx -= 1
-		ridx = tt[idx]
-		idx -= 1
-		lidx = tt[idx]
-		idx -= 1
-		rval = reverse_hess_ep0(tt,ridx,ss,vvals,pvals)
-		lval = reverse_hess_ep0(tt,lidx,ss,vvals,pvals)
-		(val,hl,hr,hll,hrr,hlr) = reverse_hess_calc(oc, lval, rval)
-		# push!(ss,adj)
-		push!(ss,hl)
-		push!(ss,hr)
-		push!(ss,hll)
-		push!(ss,hrr)
-		push!(ss,hlr)
-	elseif(ntype == TYPE_OU)
-		oc = tt[idx]
-		assert(U_OP_START<= oc <= U_OP_END)
-		idx -= 1
-		lidx = tt[idx]
-		idx -= 1
-		lval = reverse_hess_ep0(tt,lidx,ss,vvals,pvals)
-		(val,hl,hll) = reverse_hess_calc(oc,lval)
-		# push!(ss,adj)
-		push!(ss,hl)
-		push!(ss,hll)
-	else
-		assert(false)
-	end
-	assert(!isnan(val))
-	return val
+	# @inbounds while(idx > 0)
+	# 	ntype = tt[idx]
+	# 	idx -= 1
+	# 	adj = pop!(adjs)
+	# 	# val = pop!(v)
+	# 	if(ntype == TYPE_P)
+	# 		idx -= 2
+	# 	elseif(ntype == TYPE_V)
+	# 		push!(g,(tt[idx],adj))
+	# 		idx -= 2
+	# 	elseif(ntype == TYPE_O)
+	# 		n = tt[idx]
+	# 		idx -= 3 #skip TYPE_O 
+	# 		@simd for i=length(imm)-n+1:1:length(imm)
+	# 			push!(adjs,imm[i]*adj)
+	# 		end
+	# 		resize!(imm,length(imm)-n)
+	# 	end
+	# end
 end
 
-function reverse_hess_calc(oc::OP_TYPE, lval::Real, rval::Real)
-	hl = NaN
-	hll = NaN
-	hrr = NaN
-	hlr = NaN
-	val = evaluate(OP[oc],lval,rval)::VV_TYPE
-	if(OP[oc]==:+)
-		hl = 1.0
-		hr = 1.0
-		hll = 0.0
-		hrr = 0.0
-		hlr = 0.0
-	elseif(OP[oc]==:-)
-		hl = 1.0
-		hr = -1.0
-		hll = 0.0
-		hrr = 0.0
-		hlr = 0.0
-	elseif(OP[oc]==:*)
-		hl = rval
-		hr = lval
-		hll = 0.0
-		hrr = 0.0
-		hlr = 1.0
-	elseif(OP[oc]==:/)
-		hl = 1/rval
-		hr = -lval/(rval^2)
-		hll = 0.0
-		hrr = 2*lval/(rval^3)
-		hlr = -1/(rval^2)
-	elseif(OP[oc]==:^)
-		hl = rval*(lval^(rval-1))
-		hr = 0.0
-		hll = rval*(rval-1)*(lval^(rval-2))
-		hrr = 0.0
-		hlr = 0.0
-	else
-		assert(false)
-	end
-	assert(val!=NaN && hl != NaN && hll!=NaN && hrr!=NaN &&hlr!=NaN)
-	return (val,hl,hr,hll,hrr,hlr)
-end
-
-
-function reverse_hess_calc(oc::OP_TYPE, lval::Real)
-	hl  = NaN
-	hll = NaN
-	val = evaluate(OP[oc],lval)::Float64
-	if(OP[oc]==:sin)
-		hl = cos(lval)
-		hll = -sin(lval)
-	elseif(OP[oc]==:cos)
-		hl = -sin(lval)
-		hll = -cos(lval)
-	else
-		assert(false)	
-	end
-	assert(val!=NaN && hl!=NaN && hll!=NaN)
-	return (val,hl,hll)
-end
-
-function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
-	# @show eset
-	ntype = tt[idx]
-	this_idx = idx
-	idx -= 1
-	if(ntype == TYPE_P)
-		removeEdges(eset,this_idx)
-	elseif(ntype == TYPE_V)
-		#nothing
-	elseif(ntype == TYPE_OB)
-		# @show "TYPE_OB"
-		oc = tt[idx]
-		idx -= 1 #skip oc
-		ridx = tt[idx]
-		idx -= 1
-		lidx = tt[idx]
-		idx -= 1
-
-		deset = Set{Edge}()
-		aeset = Set{Edge}()
-		
-		#pushing
-		state = start(eset)
-		# i = 0
-		while !done(eset,state)
-			# @show state
-			# @show eset
-			# i += 1
-			# println("iter ",i," - length ",length(eset))
-			(e,state) = next(eset,state)
-			if(isEndPointOnEdge(e,this_idx))
-				if(isSelfEdge(e))
-					e1 = createEdge(tt,lidx,ridx)
-					e2 = createEdge(tt,lidx,lidx)
-					e3 = createEdge(tt,ridx,ridx)
-					push!(aeset, e1)
-					push!(aeset, e2)
-					push!(aeset, e3)
-				else
-					oidx = e.lidx == this_idx?e.ridx:e.lidx
-					e1 = createEdge(tt,lidx,oidx)
-					e2 = createEdge(tt,ridx,oidx)
-					push!(aeset, e1)
-					push!(aeset, e2)
-				end
-				# println("before delete iter",i," - length ",length(eset))
-				# eset = delete!(eset,e)
-				# println("after delete iter ",i," - length ",length(eset))
-				push!(deset,e)
-			end
-		end
-		setdiff!(eset, deset)  #remove deleted edge
-		
-		#creating
-		if(OP[oc] == :+ || OP[oc] == :-)
-			#do nothing for linear operator
-		elseif(OP[oc] == :*)
-			e1 = createEdge(tt,lidx,ridx)
-			push!(aeset,e1)
-		elseif(OP[oc] == :/)
-			e1 = createEdge(tt,lidx,ridx)
-			e3 = createEdge(tt,ridx,ridx)
-			push!(aeset,e1)
-			push!(aeset,e3)
-		elseif(OP[oc] == :^)
-			e1 = createEdge(tt,lidx,ridx)
-			e2 = createEdge(tt,lidx,lidx)
-			e3 = createEdge(tt,ridx,ridx)
-			push!(aeset,e1)
-			push!(aeset,e2)
-			push!(aeset,e3)
-		else
-			assert(false);
-		end
-		union!(eset, aeset)  #ading pushed edges and created edges
-
-		hess_nz(tt,lidx,eset)
-		hess_nz(tt,ridx,eset)
-	elseif(ntype == TYPE_OU)
-		# @show "TYPE_OU"
-		oc = tt[idx]
-		idx -= 1 #skip oc
-		lidx = tt[idx]
-
-		deset = Set{Edge}()
-		aeset = Set{Edge}()
-		#pushing
-		state = start(eset)
-		while !done(eset,state)
-			(e,state) = next(eset,state)
-			if(isEndPointOnEdge(e,this_idx))
-				if(isSelfEdge(e))
-					#case 2
-					e2 = createEdge(tt,lidx,lidx)
-					push!(aeset,e2)
-				else
-					#case 1, 3
-					oidx = e.lidx == this_idx? e.ridx:e.lidx
-					e1 = createEdge(tt,lidx,oidx)
-					push!(aeset,e1)
-				end
-				# delete!(eset, e)
-				push!(deset,e)
-			end
-		end
-		setdiff!(eset,deset)  #remove deleted edge
-		#creating
-		if(OP[oc]==:sin)
-			e1 = createEdge(tt,lidx,lidx)
-			push!(aeset,e1)
-		elseif (OP[oc] == :cos)
-			e1 = createEdge(tt,lidx,lidx)
-			push!(aeset,e1)
-		else
-			assert(false)
-		end
-		union!(eset,aeset) #adding pushed edges and created edges
-
-		hess_nz(tt,lidx,eset)
-	else
-		assert(false)
-	end
-end
-
-
-function hess_nz1(eset::Set{Edge},veset::Set{Edge})
-	# println("before hess_nz1", eset)
-	state = start(eset)
-	while !done(eset,state)
-		(e,state) = next(eset,state)
-		lidx = e.lidx
-		ridx = e.ridx
-		assert(e.tt[lidx] == TYPE_V)
-		assert(e.tt[ridx] == TYPE_V)
-		lidx -= 1
-		ridx -= 1
-		lvidx = e.tt[lidx]
-		rvidx = e.tt[ridx]
-		ve = Edge(e.tt,lvidx,rvidx)
-		# println("hess_nz1 - make edge ",lvidx," -- ",rvidx)
-		push!(veset,ve)
-	end
-	# println("after hess_nz1", veset)
-end
 
 function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, eset::EdgeSet)
 	# debug("enter - ", adj)
@@ -596,6 +372,259 @@ function reverse_hess_ep2(eset::EdgeSet,factor::VV_TYPE, veset::EdgeSet)
 	end
 	# @show veset
 	return veset
+end
+
+
+# function reverse_hess_ep0{I}(tape::Tape{I}, idx::IDX_TYPE, ss::TV_STACK, vvals::TV_TYPE, pvals::TV_TYPE)
+# 	assert(idx != 0)
+# 	val = NaN
+# 	ntype = tt[idx]
+# 	idx -= 1
+# 	if(ntype == TYPE_P)
+# 		val = pvals[tt[idx]]
+# 		idx -= 1
+# 	elseif(ntype == TYPE_V)
+# 		val = vvals[tt[idx]]
+# 		idx -= 1
+# 	elseif(ntype == TYPE_OB)
+# 		oc = tt[idx]
+# 		assert(B_OP_START<= oc <= B_OP_END)
+# 		idx -= 1
+# 		ridx = tt[idx]
+# 		idx -= 1
+# 		lidx = tt[idx]
+# 		idx -= 1
+# 		rval = reverse_hess_ep0(tt,ridx,ss,vvals,pvals)
+# 		lval = reverse_hess_ep0(tt,lidx,ss,vvals,pvals)
+# 		(val,hl,hr,hll,hrr,hlr) = reverse_hess_calc(oc, lval, rval)
+# 		# push!(ss,adj)
+# 		push!(ss,hl)
+# 		push!(ss,hr)
+# 		push!(ss,hll)
+# 		push!(ss,hrr)
+# 		push!(ss,hlr)
+# 	elseif(ntype == TYPE_OU)
+# 		oc = tt[idx]
+# 		assert(U_OP_START<= oc <= U_OP_END)
+# 		idx -= 1
+# 		lidx = tt[idx]
+# 		idx -= 1
+# 		lval = reverse_hess_ep0(tt,lidx,ss,vvals,pvals)
+# 		(val,hl,hll) = reverse_hess_calc(oc,lval)
+# 		# push!(ss,adj)
+# 		push!(ss,hl)
+# 		push!(ss,hll)
+# 	else
+# 		assert(false)
+# 	end
+# 	assert(!isnan(val))
+# 	return val
+# end
+
+# function reverse_hess_calc(oc::OP_TYPE, lval::Real, rval::Real)
+# 	hl = NaN
+# 	hll = NaN
+# 	hrr = NaN
+# 	hlr = NaN
+# 	val = evaluate(OP[oc],lval,rval)::VV_TYPE
+# 	if(OP[oc]==:+)
+# 		hl = 1.0
+# 		hr = 1.0
+# 		hll = 0.0
+# 		hrr = 0.0
+# 		hlr = 0.0
+# 	elseif(OP[oc]==:-)
+# 		hl = 1.0
+# 		hr = -1.0
+# 		hll = 0.0
+# 		hrr = 0.0
+# 		hlr = 0.0
+# 	elseif(OP[oc]==:*)
+# 		hl = rval
+# 		hr = lval
+# 		hll = 0.0
+# 		hrr = 0.0
+# 		hlr = 1.0
+# 	elseif(OP[oc]==:/)
+# 		hl = 1/rval
+# 		hr = -lval/(rval^2)
+# 		hll = 0.0
+# 		hrr = 2*lval/(rval^3)
+# 		hlr = -1/(rval^2)
+# 	elseif(OP[oc]==:^)
+# 		hl = rval*(lval^(rval-1))
+# 		hr = 0.0
+# 		hll = rval*(rval-1)*(lval^(rval-2))
+# 		hrr = 0.0
+# 		hlr = 0.0
+# 	else
+# 		assert(false)
+# 	end
+# 	assert(val!=NaN && hl != NaN && hll!=NaN && hrr!=NaN &&hlr!=NaN)
+# 	return (val,hl,hr,hll,hrr,hlr)
+# end
+
+
+# function reverse_hess_calc(oc::OP_TYPE, lval::Real)
+# 	hl  = NaN
+# 	hll = NaN
+# 	val = evaluate(OP[oc],lval)::Float64
+# 	if(OP[oc]==:sin)
+# 		hl = cos(lval)
+# 		hll = -sin(lval)
+# 	elseif(OP[oc]==:cos)
+# 		hl = -sin(lval)
+# 		hll = -cos(lval)
+# 	else
+# 		assert(false)	
+# 	end
+# 	assert(val!=NaN && hl!=NaN && hll!=NaN)
+# 	return (val,hl,hll)
+# end
+
+function hess_nz(tt::TT_TYPE, idx::IDX_TYPE, eset::Set{Edge})
+	# @show eset
+	ntype = tt[idx]
+	this_idx = idx
+	idx -= 1
+	if(ntype == TYPE_P)
+		removeEdges(eset,this_idx)
+	elseif(ntype == TYPE_V)
+		#nothing
+	elseif(ntype == TYPE_OB)
+		# @show "TYPE_OB"
+		oc = tt[idx]
+		idx -= 1 #skip oc
+		ridx = tt[idx]
+		idx -= 1
+		lidx = tt[idx]
+		idx -= 1
+
+		deset = Set{Edge}()
+		aeset = Set{Edge}()
+		
+		#pushing
+		state = start(eset)
+		# i = 0
+		while !done(eset,state)
+			# @show state
+			# @show eset
+			# i += 1
+			# println("iter ",i," - length ",length(eset))
+			(e,state) = next(eset,state)
+			if(isEndPointOnEdge(e,this_idx))
+				if(isSelfEdge(e))
+					e1 = createEdge(tt,lidx,ridx)
+					e2 = createEdge(tt,lidx,lidx)
+					e3 = createEdge(tt,ridx,ridx)
+					push!(aeset, e1)
+					push!(aeset, e2)
+					push!(aeset, e3)
+				else
+					oidx = e.lidx == this_idx?e.ridx:e.lidx
+					e1 = createEdge(tt,lidx,oidx)
+					e2 = createEdge(tt,ridx,oidx)
+					push!(aeset, e1)
+					push!(aeset, e2)
+				end
+				# println("before delete iter",i," - length ",length(eset))
+				# eset = delete!(eset,e)
+				# println("after delete iter ",i," - length ",length(eset))
+				push!(deset,e)
+			end
+		end
+		setdiff!(eset, deset)  #remove deleted edge
+		
+		#creating
+		if(OP[oc] == :+ || OP[oc] == :-)
+			#do nothing for linear operator
+		elseif(OP[oc] == :*)
+			e1 = createEdge(tt,lidx,ridx)
+			push!(aeset,e1)
+		elseif(OP[oc] == :/)
+			e1 = createEdge(tt,lidx,ridx)
+			e3 = createEdge(tt,ridx,ridx)
+			push!(aeset,e1)
+			push!(aeset,e3)
+		elseif(OP[oc] == :^)
+			e1 = createEdge(tt,lidx,ridx)
+			e2 = createEdge(tt,lidx,lidx)
+			e3 = createEdge(tt,ridx,ridx)
+			push!(aeset,e1)
+			push!(aeset,e2)
+			push!(aeset,e3)
+		else
+			assert(false);
+		end
+		union!(eset, aeset)  #ading pushed edges and created edges
+
+		hess_nz(tt,lidx,eset)
+		hess_nz(tt,ridx,eset)
+	elseif(ntype == TYPE_OU)
+		# @show "TYPE_OU"
+		oc = tt[idx]
+		idx -= 1 #skip oc
+		lidx = tt[idx]
+
+		deset = Set{Edge}()
+		aeset = Set{Edge}()
+		#pushing
+		state = start(eset)
+		while !done(eset,state)
+			(e,state) = next(eset,state)
+			if(isEndPointOnEdge(e,this_idx))
+				if(isSelfEdge(e))
+					#case 2
+					e2 = createEdge(tt,lidx,lidx)
+					push!(aeset,e2)
+				else
+					#case 1, 3
+					oidx = e.lidx == this_idx? e.ridx:e.lidx
+					e1 = createEdge(tt,lidx,oidx)
+					push!(aeset,e1)
+				end
+				# delete!(eset, e)
+				push!(deset,e)
+			end
+		end
+		setdiff!(eset,deset)  #remove deleted edge
+		#creating
+		if(OP[oc]==:sin)
+			e1 = createEdge(tt,lidx,lidx)
+			push!(aeset,e1)
+		elseif (OP[oc] == :cos)
+			e1 = createEdge(tt,lidx,lidx)
+			push!(aeset,e1)
+		else
+			assert(false)
+		end
+		union!(eset,aeset) #adding pushed edges and created edges
+
+		hess_nz(tt,lidx,eset)
+	else
+		assert(false)
+	end
+end
+
+
+function hess_nz1(eset::Set{Edge},veset::Set{Edge})
+	# println("before hess_nz1", eset)
+	state = start(eset)
+	while !done(eset,state)
+		(e,state) = next(eset,state)
+		lidx = e.lidx
+		ridx = e.ridx
+		assert(e.tt[lidx] == TYPE_V)
+		assert(e.tt[ridx] == TYPE_V)
+		lidx -= 1
+		ridx -= 1
+		lvidx = e.tt[lidx]
+		rvidx = e.tt[ridx]
+		ve = Edge(e.tt,lvidx,rvidx)
+		# println("hess_nz1 - make edge ",lvidx," -- ",rvidx)
+		push!(veset,ve)
+	end
+	# println("after hess_nz1", veset)
 end
 
 #Interface function
