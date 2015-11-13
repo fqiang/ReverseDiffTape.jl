@@ -122,12 +122,8 @@ end
 for i = B_OP_START:1:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+)
-		push!(ex.args,parse("@inbounds r[1] = zero(V)"))
-		push!(ex.args,parse("@simd for j=i:1:length(v) \n @inbounds r[1]+=v[j] \n end"))
-	elseif(o==:*)
-		push!(ex.args,parse("@inbounds r[1] = v[i]"))
-		push!(ex.args,parse("@simd for j=i+1:1:length(v) \n @inbounds r[1] *= v[j] \n end"))
+	if(o==:+ || o==:*)
+        continue
 	else
 		ex = parse("@inbounds  r[1]=$(o)(v[i],v[i+1])")
 	end
@@ -135,8 +131,22 @@ for i = B_OP_START:1:B_OP_END
 end
 
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-
 @eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})
+    if s == :+
+        counter = zero(V)
+        for j in i:length(v)
+            @inbounds counter += v[j]
+        end
+        @inbounds r[1] = counter
+        return
+    elseif s == :*
+        counter = v[i]
+        for j = i+1:length(v)
+            @inbounds counter *= v[j]
+        end
+        @inbounds r[1] = counter
+        return
+    end
     @inbounds $switchexpr
 end
 
