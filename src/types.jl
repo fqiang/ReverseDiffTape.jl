@@ -23,19 +23,15 @@ type MyArray{V}
 end
 
 call{V}(::Type{MyArray{V}},max_sz::Int) = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
-#  	this = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
-#  	fill!(this.a,0.0)
-#  	return this
-# end
 
 function push!{V}(a::MyArray{V},v::V)
-	println("push!, a, v")
-	@show v
-	@show a
-	assert(a.len+1<=a.maxlen)
+	# println("push!, a, v")
+	# @show v
+	# @show a
+	# assert(a.len+1<=a.maxlen)
 	a.len += 1
 	@inbounds a.a[a.len] = v
-	@show a
+	# @show a
 end
 
 function resize!{V}(a::MyArray{V},sz::Int)
@@ -47,12 +43,12 @@ function length(a::MyArray)
 end
 
 function getindex{V}(a::MyArray{V},i::Int)
-	assert(i<=a.maxlen)
+	# assert(i<=a.maxlen)
 	return a.a[i]
 end
 
 function setindex!{V}(a::MyArray{V},v::V,i::Int)
-	assert(i<=a.maxlen)
+	# assert(i<=a.maxlen)
 	@inbounds a.a[i] = v
 end
 

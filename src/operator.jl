@@ -125,7 +125,7 @@ for i = B_OP_START:B_OP_END
 	if(o==:+ || o==:*)
         continue
 	else
-		ex = parse("@inbounds  r[1]=$(o)(v[i],v[i+1])")
+		ex = parse("@inbounds  r[1]=$(o)(a[i],a[i+1])")
 	end
 	push!(switchblock.args,quot(o),ex)
 end
@@ -133,20 +133,19 @@ end
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 # @eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, r::Array{V,1})  
 @eval function eval_0ord{I,V}(s::Symbol, v::MyArray{V}, i::I, r::Array{V,1})  #to use MyArray
-    @show s,v
+    # @show s,v
+    a = v.a
     if s == :+
-    	# a = v.a
     	counter = zero(V)
         for j in i:length(v)
-            @inbounds counter += v[j]
+            @inbounds counter += a[j]
         end
         @inbounds r[1] = counter
         return
     elseif s == :*
-        # a = v.a
-        counter = v[i]
+        counter = a[i]
         for j = i+1:length(v)
-            @inbounds counter *= v[j]
+            @inbounds counter *= a[j]
         end
         @inbounds r[1] = counter
         return
