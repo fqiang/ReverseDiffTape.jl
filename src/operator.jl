@@ -23,13 +23,13 @@ import Calculus.differentiate
 function differentiate(x::SymbolParameter{:abs},args,wrt)
 	x = args[1]
 	xp = differentiate(x,wrt)
-	return :($xp>0?$xp:-$xp)
+	return :($x>0?$xp:-$xp)
 end
 
 function differentiate(x::SymbolParameter{:abs2},args,wrt)
 	x = args[1]
 	xp = differentiate(x,wrt)
-	return :($xp>0?$xp:-$xp)
+	return :($x>0?$xp:-$xp)
 end
 
 for sym in OP
@@ -41,7 +41,7 @@ for sym in OP
 	# @show dxy
 	dyy = differentiate(dy,:y)
 	# @show dyy
-	S_TO_DIFF[sym] = [dx,dy,dxx,dyy,dxy]
+	S_TO_DIFF[sym] = [dx,dy,dxx,dxy,dyy]
 end
 
 for (sym, dx) = symbolic_derivatives_1arg()
@@ -169,10 +169,8 @@ for i = B_OP_START:1:B_OP_END
 		push!(ex.args,parse("@simd for j=i:1:length(v) \n push!(imm,r[1]/v[j]) \n end"))
 	else
 		(dx,dy) = S_TO_DIFF[o]
-		dx = replace_sym(:x,dx,"v[i]")
-		dx = replace_sym(:y,dx,"v[i+1]")
-		dy = replace_sym(:x,dy,"v[i]")
-		dy = replace_sym(:y,dy,"v[i+1]")
+		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
+		dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
 		# @show dx, dy
 		ex = Expr(:block)
 		push!(ex.args,Expr(:call,:push!,:imm,dx))
@@ -229,7 +227,7 @@ for i = B_OP_START:1:B_OP_END
 				# 	end
 				# end
 	else
-		(dx,dy,dxx,dyy,dxy) = S_TO_DIFF[o]
+		(dx,dy,dxx,dxy,dyy) = S_TO_DIFF[o]
 		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
 		dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
 		dxx = replace_sym(:y,replace_sym(:x,dxx,"v[i]"),"v[i+1]")
