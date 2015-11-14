@@ -113,11 +113,19 @@ end
 # eval_0ord, eval_1ord, eval_2ord function gen
 #
 ##########################################################################################
+## one argument functions
 switchblock = Expr(:block)
 for i = U_OP_START:U_OP_END
-	ex = parse("@inbounds r[1]=$(OP[i])(v[i])")
+	ex = :(return $(OP[i])(x))
     push!(switchblock.args,quot(OP[i]),ex)
 end
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+@eval function eval_0ord{V}(s::Symbol, x::V)
+    $switchexpr
+end
+
+# 2+ argument functions
+switchblock = Expr(:block)
 
 for i = B_OP_START:B_OP_END
 	o = OP[i]
@@ -125,30 +133,28 @@ for i = B_OP_START:B_OP_END
 	if(o==:+ || o==:*)
         continue
 	else
-		ex = parse("@inbounds  r[1]=$(o)(v[i],v[i+1])")
+		ex = :(@inbounds return $(o)(v[i],v[i+1]))
 	end
 	push!(switchblock.args,quot(o),ex)
 end
 
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-@eval function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, e::I, r::Array{V,1})  
+@eval @inline function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, e::I)
     # @show s,v
     if s == :+
     	counter = zero(V)
         for j in i:e
             @inbounds counter += v[j]
         end
-        @inbounds r[1] = counter
-        return
+        return counter
     elseif s == :*
         counter = v[i]
         for j = i+1:e
             @inbounds counter *= v[j]
         end
-        @inbounds r[1] = counter
-        return
+        return counter
     end
-    @inbounds $switchexpr
+    $switchexpr
 end
 
 ##########################################################################################
