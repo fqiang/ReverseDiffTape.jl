@@ -130,7 +130,7 @@ switchblock = Expr(:block)
 for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+ || o==:*)
+	if(o==:+ || o==:* || o ==:^)
         continue
 	else
 		ex = :(@inbounds return $(o)(v[i],v[i+1]))
@@ -153,6 +153,14 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
             @inbounds counter *= v[j]
         end
         return counter
+    elseif s == :^
+        @inbounds exponent = v[i+1]
+        @inbounds base = v[i]
+        if exponent == 2
+            return base*base
+        else
+            return base^exponent
+        end
     end
     $switchexpr
 end
