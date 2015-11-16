@@ -4,29 +4,27 @@ function forward_pass_0ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 	tt = tape.tt
 	idx = one(I)
 	
-	stk = Array{V,1}()
+	stk = Vector{V}(tape.maxoperands+20)
+    stklen = 0
 	# sizehint!(stk, tape.maxoperands+20)
-	stk = MyArray{V}(tape.maxoperands+20) #to use MyArray
-	v = [zero(V)]
-	sizehint!(v,1)
+	#stk = MyArray{V}(tape.maxoperands+20) #to use MyArray
 	
 	@inbounds while(idx <= length(tt))
 		# @show idx
 		ntype = tt[idx]
 		idx += 1
-		v[1] = zero(V)
 		# @show ntype
 		if(ntype == TYPE_P)
-			@inbounds v[1] = pvals[tt[idx]]
+			@inbounds val = pvals[tt[idx]]
 			idx += 1
-			# @show v[1]
-			@inbounds push!(stk,v[1])
+            stklen += 1
+            @inbounds stk[stklen] = val
 			idx += 1 #skip TYPE_P
 		elseif(ntype == TYPE_V)
-			@inbounds v[1] = vvals[tt[idx]]
+			@inbounds val = vvals[tt[idx]]
 			idx += 1
-			# @show v[1]
-			@inbounds push!(stk,v[1])
+            stklen += 1
+            @inbounds stk[stklen] = val
 			idx += 1 #skip TYPE_V
 		elseif(ntype == TYPE_O)
 			@inbounds oc = tt[idx]
@@ -34,12 +32,14 @@ function forward_pass_0ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 			@inbounds n = tt[idx]
 			idx += 1
 			idx += 1 #skip TYPE_O
-			# @show OP[oc],stk
-			# @inbounds eval_0ord(OP[oc],stk,length(stk)-n+1,length(stk),v) 
-			@inbounds eval_0ord(OP[oc],stk.a,length(stk)-n+1,length(stk),v)  #using MyArray
-			@inbounds resize!(stk,length(stk)-n+1)
-			# @show v
-			@inbounds stk[end] = v[1]
+            if n == 1 # 1-argument functions
+                @inbounds stk[stklen] = eval_0ord(OP[oc],stk[stklen])
+            else
+                # @show OP[oc],stk
+                @inbounds val = eval_0ord(OP[oc],stk,stklen-n+1,stklen)  #using MyArray
+                stklen -= n-1
+                @inbounds stk[stklen] = val
+            end
 		end
 	end
 	return stk[1]
