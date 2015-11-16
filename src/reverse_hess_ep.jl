@@ -56,6 +56,86 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 	# @show stk
 end
 
+function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
+	tt = tape.tt
+	idx = length(tt)
+	adjs = Array{V,1}()
+	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
+	push!(adjs,one(V))  #init value 
+
+	@inbounds while(idx > 0)
+		cidx = idx
+		ntype = tt[idx]
+		idx -= 1
+		adj = pop!(adjs)
+		if(ntype == TYPE_P)
+			idx -= 2
+			delete!(eset,cidx)
+		elseif(ntype == TYPE_V)
+			idx -= 2
+		elseif(ntype == TYPE_O)
+			n = tt[idx]
+			idx -= 3 #skip TYPE_O 
+			#pushing	
+			Dict{I,V} set = eset[cidx]
+			state = start(set)
+			while !done(set,state)
+				(i,w) = next(set,state)
+				
+				
+		# #pushing
+		# state = start(eset)
+		# # println("binary op before pushing - eset(",length(eset),")")
+		# while !done(eset,state)
+		# 	(pair, state) = next(eset,state)
+		# 	e = pair[1]
+		# 	w = pair[2]
+		# 	if(isEndPointOnEdge(e,this_idx))
+		# 		if(isSelfEdge(e))
+		# 			#case 2
+		# 			e1 = createEdge(tt,lidx,ridx)
+		# 			w1 = hl*hr*w
+		# 			e2 = createEdge(tt,lidx,lidx)
+		# 			w2 = hl*hl*w
+		# 			e3 = createEdge(tt,ridx,ridx)
+		# 			w3 = hr*hr*w
+		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 			aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
+		# 			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
+		# 		else
+		# 			#case 1 , 3
+		# 			oidx = e.lidx == this_idx? e.ridx: e.lidx
+		# 			e1 = createEdge(tt,lidx,oidx)
+		# 			e2 = createEdge(tt,ridx,oidx)
+		# 			w1 = e1.lidx == e1.ridx? (2*hl*w): (hl*w)
+		# 			w2 = e2.lidx == e2.ridx? (2*hr*w): (hr*w)
+		# 			aeset[e1] = haskey(aeset,e1)? aeset[e1]+w1:w1
+		# 			aeset[e2] = haskey(aeset,e2)? aeset[e2]+w2:w2
+		# 		end
+		# 		# delete!(eset,e)
+		# 		push!(deset,e)
+		# 	end
+		# end
+
+		# for k in deset  #delete the pushed edges
+		# 	delete!(eset,k)
+		# end
+
+
+			#creating
+
+
+			#adj
+			@simd for i=length(imm)-n+1:length(imm)
+				push!(adjs,imm[i]*adj)
+			end
+			resize!(imm,length(imm)-n)
+		end
+	end
+end
+
+
+
 
 immutable Edge{I} 
     lidx::I
@@ -135,43 +215,6 @@ function isBothVariable(e::Edge)
 	lidx = e.lidx
 	ridx = e.ridx
 	return e.tt[lidx] == TYPE_V && e.tt[ridx] == TYPE_V
-end
-
-
-
-function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
-	tt = tape.tt
-	idx = length(tt)
-	adjs = Array{V,1}()
-	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
-	push!(adjs,one(V))  #init value 
-
-	@inbounds while(idx > 0)
-		cidx = idx
-		ntype = tt[idx]
-		idx -= 1
-		adj = pop!(adjs)
-		if(ntype == TYPE_P)
-			idx -= 2
-			delete!(eset,cidx)
-		elseif(ntype == TYPE_V)
-			idx -= 2
-		elseif(ntype == TYPE_O)
-			n = tt[idx]
-			idx -= 3 #skip TYPE_O 
-			#pushing
-
-
-			#creating
-
-
-			#adj
-			@simd for i=length(imm)-n+1:length(imm)
-				push!(adjs,imm[i]*adj)
-			end
-			resize!(imm,length(imm)-n)
-		end
-	end
 end
 
 
