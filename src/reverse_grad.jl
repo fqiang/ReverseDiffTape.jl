@@ -54,15 +54,16 @@ end
 function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
 	tt = tape.tt
 	idx = length(tt)
-	adjs = Array{V,1}()
-	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
-	push!(adjs,one(V))  #init value 
+	immlen = length(imm)
+	adjs = Vector{V}(tape.nnode)
+	adjlen = 1
+	adjs[adjlen] = one(V)
 
 	@inbounds while(idx > 0)
 		ntype = tt[idx]
 		idx -= 1
-		adj = pop!(adjs)
-		# val = pop!(v)
+		adj = adjs[adjlen]
+		adjlen -= 1
 		if(ntype == TYPE_P)
 			idx -= 2
 		elseif(ntype == TYPE_V)
@@ -71,10 +72,11 @@ function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 3 #skip TYPE_O 
-			@simd for i=length(imm)-n+1:length(imm)
-				push!(adjs,imm[i]*adj)
+			@simd for i=immlen-n+1:immlen
+				adjlen += 1
+				adjs[adjlen] = imm[i]*adj
 			end
-			resize!(imm,length(imm)-n)
+			immlen -= n
 		end
 	end
 end
