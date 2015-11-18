@@ -190,7 +190,7 @@ switchblock = Expr(:block)
 for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+ || o==:*)
+	if(o==:+ || o==:* || o == :^)
 		continue
 	else
 		(dx,dy) = S_TO_DIFF[o]
@@ -227,6 +227,20 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 			imm_i += 1
 		end
 		return ret
+	elseif s==:^
+		@inbounds exponent = v[i+1]
+		@inbounds base = v[i]
+		if exponent == 2
+			imm[imm_i] = 2*base
+			t = base*base
+			imm[imm_i+1] = t*log(base)
+			return t
+		else
+			imm[imm_i] = exponent*base^(exponent-1)
+			t = base^exponent
+			imm[imm_i+1] = t*log(base)
+			return t
+		end
 	end
 	$switchexpr
 end
