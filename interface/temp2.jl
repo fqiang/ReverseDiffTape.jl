@@ -1,6 +1,6 @@
 #temp2.jl
-include("test_small.jl") 
- jd = m.internalModel.evaluator.jd
+include("test_megalarge.jl") 
+ jd = m.internalModel.evaluator.jd;
  ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
  tt = Tape{Int}()
@@ -18,6 +18,10 @@ Profile.clear_malloc_data()
 # imm = Vector{Float64}(tt.nnode-1)        
 # ReverseDiffTape.forward_pass_1ord(tt,x,p,imm)
 
+imm=Vector{Float64}(tt.imm2ord);
+tr = Vector{Int}();
+eset=Dict{Int,Dict{Int,Float64}}();
+ReverseDiffTape.forward_pass_2ord(tt,x,p,imm,tr,eset)
 
 gtuple = Array{Tuple{Int,Float64},1}();
 sizehint!(gtuple, tt.nvnode)
@@ -39,7 +43,7 @@ Profile.clear_malloc_data()
 gtuple = Array{Tuple{Int,Float64},1}();
 sizehint!(gtuple, tt.nvnode)
 @time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
-
+@time MathProgBase.eval_grad_f(jd,jg,x)
 
 
 ##########  test build using types
