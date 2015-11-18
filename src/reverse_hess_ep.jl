@@ -13,15 +13,13 @@ typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1}, eset::EdgeSet{I,V})
 	tt = tape.tt
 	idx = one(I)
-	v = [zero(V)]
-	empty!(imm)  #used for immediate derrivative
-	empty!(tr)
-	stk = Array{V,1}() #used for value evaluation
-	istk = Array{I,1}()
-	sizehint!(stk,tape.maxoperands+20) #plus depth, should work out this number 
-	sizehint!(istk,tape.maxoperands+20) #plus depth, should work out this number 
-	sizehint!(v,1)
-
+	# empty!(imm)  #used for immediate derrivative
+	# empty!(tr)
+	stk = Vector{V}(tape.maxoperands+20) #used for value evaluation
+	istk = Vector{I}(tape.maxoperands+20)
+	stklen = zero(I)
+	immlen = zero(I)
+	
 	@inbounds while(idx <= length(tt))
 		# @show idx
 		# println("++++++++++++++++++++++++++++++++++++")
@@ -29,12 +27,14 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 		eset[idx] = Dict{I,V}() #initialize edge set
 		idx += 1
 		if(ntype == TYPE_P)
-			push!(istk,idx-1)
-			push!(stk,pvals[tt[idx]])	
+			stklen += 1
+			istk[stklen] = idx-1
+			stk[stklen] = pvals[tt[idx]]
 			idx += 2 #skip TYPE_P
 		elseif(ntype == TYPE_V)
-			push!(istk,idx-1)
-			push!(stk,vvals[tt[idx]])
+			stklen += 1
+			istk[stklen] = idx-1
+			stk[stklen] = vvals[tt[idx]]
 			idx += 2 #skip TYPE_V
 		elseif(ntype == TYPE_O)
 			oc = tt[idx]
@@ -43,14 +43,18 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 			idx += 2 #skip TYPE_O
 			# @show OP[oc], length(stk)-n+1, n
 			# @show stk
-			eval_2ord(OP[oc],stk,length(stk)-n+1,imm,v)
-			append!(tr,istk[length(istk)-n+1:end])
-			# @show imm
-			# @show v
-			resize!(stk,length(stk)-n+1)
-			resize!(istk,length(istk)-n+1)
-			stk[end] = v[1]
-			istk[end] = idx-4
+			counter = zero(I)
+			if(n==1)
+				@inbounds (counter,stk[stklen]) = eval_2ord(OP[oc],stk[stklen],imm,immlen+1)
+			else
+				@inbounds (counter,val) = eval_2ord(OP[oc],stk,stklen-n+1,stklen,imm,immlen+1)
+				@inbounds stk[stklen] = val
+			end
+			append!(tr,istk[stklen-n+1:stklen])
+			stklen -= n-1
+			immlen += counter
+			istk[stklen] = idx - 4
+			# @show imm			
 		end
 		# println("++++++++++++++++++++++++++++++++++++")
 	end
@@ -125,7 +129,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},ese
 			delete!(eset,i)	
 
 			#creating
-			# if
+			#
 
 		# 	#creating
 		# if(OP[oc] == :+ || OP[oc] == :-)

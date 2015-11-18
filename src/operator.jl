@@ -246,44 +246,33 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 end
 
 ##########################################################################################
-
+#one argument funtion
 switchblock = Expr(:block)
 # @show switchblock
 for i = U_OP_START:U_OP_END
 	o = OP[i]
 	(dx,dxx) = S_TO_DIFF[o]
-	dx = replace_sym(:x,dx,"v[i]")
-	dxx = replace_sym(:x,dxx,"v[i]")
+	dx = replace_sym(:x,dx,"v")
+	dxx = replace_sym(:x,dxx,"v")
 	# @show dx, dxx
 	ex = Expr(:block)
-	push!(ex.args,Expr(:call,:push!,:imm,dx))
-	push!(ex.args,Expr(:call,:push!,:imm,dxx))
-	push!(ex.args,parse("r[1]=$(o)(v[i])"))
+	push!(ex.args,parse("@inbounds imm[imm_i] = $(dx)"))
+	push!(ex.args,parse("@inbounds imm[imm_i+1] = $(dxx)"))
+	push!(ex.args,:(@inbounds return 2,$(o)(v)))
 	push!(switchblock.args,quot(o),ex)
 end
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
+@eval @inline function eval_2ord{I,V}(s::Symbol,v::V,imm::Array{V,1}, imm_i::I)
+	$switchexpr
+end
 
+# 2+ argument function
+switchblock = Expr(:block)
 for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+)
-		push!(ex.args,parse("ret = zero(V)"))
-		#do not put second order , since all zeros
-		#do not put first order , since all one
-		push!(ex.args,parse("@simd for j=i:length(v) \n ret += v[j] \n end"))
-		push!(ex.args,parse("r[1] = ret"))
-	elseif(o==:*)
-		push!(ex.args,parse("ret = one(V)"))
-		push!(ex.args,parse("@simd for j=i:length(v) \n ret *= v[j] \n end"))
-		push!(ex.args,parse("r[1] = ret"))
-		push!(ex.args,parse("@simd for j=i:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
-				# for j=i:length(v)
-				# 	dxj = r[1]/v[j]
-				# 	push!(imm,dxj)  #first order
-				# 	for k=j+1:length(v)
-				# 		dxjk = dxj/v[k]
-				# 		push!(imm,dxjk)  #every cross second order, diagonal is zero not pushed. 
-				# 	end
-				# end
+	if(o==:+ || o==:* || o == :^)
+		continue
 	else
 		(dx,dy,dxx,dxy,dyy) = S_TO_DIFF[o]
 		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
@@ -297,21 +286,71 @@ for i = B_OP_START:B_OP_END
 		# @show dyy
 		# @show dxy
 		ex = Expr(:block)
-		push!(ex.args,Expr(:call,:push!,:imm,dx))
-		push!(ex.args,Expr(:call,:push!,:imm,dy))
-		push!(ex.args,Expr(:call,:push!,:imm,dxx))
-		push!(ex.args,Expr(:call,:push!,:imm,dxy))
-		push!(ex.args,Expr(:call,:push!,:imm,dyy))
-		push!(ex.args,parse("r[1]=$(o)(v[i],v[i+1])"))
+		push!(ex.args,parse("@inbounds imm[imm_i] = $(dx)"))
+		push!(ex.args,parse("@inbounds imm[imm_i+1] = $(dy)"))
+		push!(ex.args,parse("@inbounds imm[imm_i+2] = $(dxx)"))
+		push!(ex.args,parse("@inbounds imm[imm_i+3] = $(dxy)"))
+		push!(ex.args,parse("@inbounds imm[imm_i+4] = $(dyy)"))
+		push!(ex.args,:(@inbounds return 5,$(o)(v[i],v[i+1])))
 	end
 	push!(switchblock.args,quot(o),ex)
 end
-
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 
 #should be auto generated code
-@eval function eval_2ord{I,V}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
-	@inbounds $switchexpr
+@eval @inline function eval_2ord{I,V}(s::Symbol,v::Array{V,1},i::I,e::I,imm::Array{V,1},imm_i::I)
+	
+	if(s==:+)
+		@inbounds ret = v[i]
+		@simd for j=i+1:e
+			@inbounds ret += v[j]
+		end
+		return 0,ret
+		#do not put second order , since all zeros
+		#do not put first order , since all one
+	elseif(s==:*)
+		ret = one(V)
+		@simd for j=i:e
+			@inbounds ret *= v[j]
+		end
+		# push!(ex.args,parse("@simd for j=i:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
+		n = e - i + 1
+		for j=0:n-1
+			dxj = ret/v[j+i]
+			@inbounds imm[j+imm_i] = dxj  #first order
+			imm_offset = round(I,(n+(n-j))*(j+1)/2)
+			@simd for k=j+1:n-1
+				@inbounds dxjk = dxj/v[k]
+				@inbounds imm[imm_offset+imm_i]=dxjk  #every cross second order, diagonal is zero not pushed. 
+				imm_offset += 1
+			end
+		end
+		return round(I,(n+n-1)*n/2), ret
+	elseif(s==:^)
+		@inbounds exponent = v[i+1]
+		@inbounds base = v[i]
+		if exponent == 2
+			t = base*base
+			t2 = log(base)
+			imm[imm_i] = 2*base
+			imm[imm_i+1] = t*t2
+			imm[imm_i+2] = 2.0
+			imm[imm_i+3] = base + 2*base*t2
+			imm[imm_i+4] = t*t2*t2
+			return 5,t
+		else
+			t = base^exponent
+			t2 = log(base)
+			t3 = base^(exponent-1.0)
+			imm[imm_i] = exponent*base^t3
+			imm[imm_i+1] = t*t2
+			imm[imm_i+2] = exponent*(exponent-1.0)*base^(exponent-2.0)
+			imm[imm_i+3] = t3 + exponent*t3*t2
+			imm[imm_i+4] = t*t2*t2
+			return 5,t
+		end
+	end
+	$switchexpr
 end
 
 ##########################################################################################
@@ -349,13 +388,14 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set
 		for i in 2:length(expr.args)
 			tapeBuilder(expr.args[i],tape,pvals,vset)
 		end
-
+		n = length(expr.args)-1
 		push!(tt,TYPE_O)
 		push!(tt,S_TO_OC[op])
-		push!(tt,length(expr.args)-1)
+		push!(tt,n)
 		push!(tt,TYPE_O)
 		tape.nnode += 1
 		tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
+		tape.imm2ord += n + round(I,n*(n+1)/2)
     else
     	println("error !")
     	dump(expr)

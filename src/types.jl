@@ -67,13 +67,14 @@ type Tape{I<:Int}
 	nvnode::I
 	nnode::I
 	maxoperands::I
+	imm2ord::I
 	
 	function Tape()
-		return new(Array{I,1}(),zero(I),zero(I),zero(I),zero(I))
+		return new(Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 	end
 
 	function Tape(data::Array{I,1})
-		this = new(data,zero(I),zero(I),zero(I),zero(I))
+		this = new(data,zero(I),zero(I),zero(I),zero(I),zero(I))
 		analysize_tape(this)
 		return this
 	end
@@ -97,6 +98,7 @@ function analysize_tape{I}(tape::Tape{I})
 			idx += 1  #skip oc
 			n = tt[idx]
 			idx += 2  #skip TYPE_O
+			tape.imm2ord = n + round(I,(n+1)*n/2)
 			tape.maxoperands<n?tape.maxoperands=n:nothing
 		end
 		tape.nnode += 1
