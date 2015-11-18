@@ -1,5 +1,5 @@
 #temp2.jl
-include("test_megalarge.jl") 
+include("test_small.jl") 
  jd = m.internalModel.evaluator.jd
  ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
@@ -14,6 +14,14 @@ x=rand(m.numCols);
 Profile.clear_malloc_data()
 @time ReverseDiffTape.feval(tt,x,p)
 @time MathProgBase.eval_f(jd,x)
+
+# imm = Vector{Float64}(tt.nnode-1)        
+# ReverseDiffTape.forward_pass_1ord(tt,x,p,imm)
+
+
+gtuple = Array{Tuple{Int,Float64},1}();
+sizehint!(gtuple, tt.nvnode)
+@time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
 
 
 gI = Array{Int,1}()

@@ -10,7 +10,7 @@ typealias TV_TYPE Array{VV_TYPE,1}
 
 typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
-function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1})
+function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1}, eset::EdgeSet{I,V})
 	tt = tape.tt
 	idx = one(I)
 	v = [zero(V)]
@@ -26,6 +26,7 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 		# @show idx
 		# println("++++++++++++++++++++++++++++++++++++")
 		ntype = tt[idx]
+		eset[idx] = Dict{I,V}() #initialize edge set
 		idx += 1
 		if(ntype == TYPE_P)
 			push!(istk,idx-1)
@@ -56,80 +57,126 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 	# @show stk
 end
 
+function make_edge{I,V}(eset::EdgeSet{I,V},i1::I,i2::I,w::V)
+	assert(i1>=i2)
+	if(haskey(eset[i1],i2))
+		eset[i1][i2] += w
+	else
+		eset[i1][i2] = w
+	end
+end
+
+
 function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
 	tt = tape.tt
 	idx = length(tt)
+	trlen = length(tr)
+	immlen = length(imm)
+
 	adjs = Array{V,1}()
 	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
 	push!(adjs,one(V))  #init value 
 
 	@inbounds while(idx > 0)
-		cidx = idx
+		i = idx
 		ntype = tt[idx]
 		idx -= 1
 		adj = pop!(adjs)
 		if(ntype == TYPE_P)
 			idx -= 2
-			delete!(eset,cidx)
+			delete!(eset,i)
 		elseif(ntype == TYPE_V)
 			idx -= 2
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 3 #skip TYPE_O 
+			trlen -= n
 			#pushing	
-			Dict{I,V} set = eset[cidx]
+			set = eset[i] #Dict{I,V} 
 			state = start(set)
 			while !done(set,state)
-				(i,w) = next(set,state)
-				
-				
-		# #pushing
-		# state = start(eset)
-		# # println("binary op before pushing - eset(",length(eset),")")
-		# while !done(eset,state)
-		# 	(pair, state) = next(eset,state)
-		# 	e = pair[1]
-		# 	w = pair[2]
-		# 	if(isEndPointOnEdge(e,this_idx))
-		# 		if(isSelfEdge(e))
-		# 			#case 2
-		# 			e1 = createEdge(tt,lidx,ridx)
-		# 			w1 = hl*hr*w
-		# 			e2 = createEdge(tt,lidx,lidx)
-		# 			w2 = hl*hl*w
-		# 			e3 = createEdge(tt,ridx,ridx)
-		# 			w3 = hr*hr*w
-		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 			aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
-		# 			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-		# 		else
-		# 			#case 1 , 3
-		# 			oidx = e.lidx == this_idx? e.ridx: e.lidx
-		# 			e1 = createEdge(tt,lidx,oidx)
-		# 			e2 = createEdge(tt,ridx,oidx)
-		# 			w1 = e1.lidx == e1.ridx? (2*hl*w): (hl*w)
-		# 			w2 = e2.lidx == e2.ridx? (2*hr*w): (hr*w)
-		# 			aeset[e1] = haskey(aeset,e1)? aeset[e1]+w1:w1
-		# 			aeset[e2] = haskey(aeset,e2)? aeset[e2]+w2:w2
-		# 		end
-		# 		# delete!(eset,e)
-		# 		push!(deset,e)
-		# 	end
-		# end
-
-		# for k in deset  #delete the pushed edges
-		# 	delete!(eset,k)
-		# end
-
+				(p,w) = next(set,state)
+				if(i==p)
+					for tr_i = trlen-n+1:trlen
+						n1 = tr[tr_i]
+						h1 = imm[tr_i]
+						assert(isempty(eset[n1]))
+						make_edge(eset,n1,n1,w*h1*h1)
+						for tr_ii=tr_i+1:trlen
+							n2 = tr[tr_ii]
+							h2 = imm[tr_ii]
+							assert(isempty(eset[n2]))
+							assert(n2>n1)
+							make_edge(eset,n2,n1,w*h1*h2)
+						end
+					end
+				else
+					for tr_i = trlen-n+1:trlen
+						n1 = tr[tr_i]
+						h1 = imm[tr_i]
+						if(n1==p) #the circle case
+							make_edge(eset,p,p,2*w*h1)
+						else
+							make_edge(eset,n1,p,w*h1)
+						end
+					end
+				end
+			end
+			delete!(eset,i)	
 
 			#creating
+			# if
 
+		# 	#creating
+		# if(OP[oc] == :+ || OP[oc] == :-)
+		# 	#do nothing for linear operator
+		# elseif(OP[oc] == :*)
+		# 	e1 = createEdge(tt,lidx,ridx)
+		# 	w1 = adj*hlr
+		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 	# eset[e1] += (adj*hlr)
+		# elseif(OP[oc] == :/)
+		# 	e1 = createEdge(tt,lidx,ridx)
+		# 	w1 = adj*hlr
+		# 	e3 = createEdge(tt,ridx,ridx)
+		# 	w3 = adj*hrr
+		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 	aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
+		# 	# eset[e1] += (adj*hlr)
+		# 	# eset[e3] += (adj*hrr)
+		# elseif(OP[oc] == :^)
+		# 	e1 = createEdge(tt,lidx,ridx)
+		# 	w1 = adj*hlr
+		# 	e2 = createEdge(tt,lidx,lidx)
+		# 	w2 = adj*hll
+		# 	e3 = createEdge(tt,ridx,ridx)
+		# 	w3 = adj*hrr
+		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 	aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
+		# 	aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
+		# 	# eset[e1] += (adj*hlr)
+		# 	# eset[e2] += (adj*hll)
+		# 	# eset[e3] += (adj*hrr)
+		# if(OP[oc]==:sin)
+		# 			e1 = createEdge(tt,lidx,lidx)
+		# 			w1 = adj*hll
+		# 			# eset[e1] += (adj*hll)
+		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 		elseif (OP[oc] == :cos)
+		# 			e1 = createEdge(tt,lidx,lidx)
+		# 			w1 = adj*hll
+		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
+		# 			# eset[e1] += (adj*hll)
+		# 		else
+		# 			assert(false)
+		# 		end
 
-			#adj
-			@simd for i=length(imm)-n+1:length(imm)
-				push!(adjs,imm[i]*adj)
-			end
-			resize!(imm,length(imm)-n)
+			# #adj
+			# for i=length(imm)-n+1:length(imm)
+			# 	push!(adjs,imm[i]*adj)
+			# end
+			# resize!(imm,length(imm)-n)
+			# resize!(tr,length(tr)-n)
 		end
 	end
 end

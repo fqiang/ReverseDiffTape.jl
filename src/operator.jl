@@ -93,15 +93,16 @@ end
 function replace_sym(s::Symbol,ex::Expr,r::AbstractString)
 	return replace_sym(s,ex,parse(r))
 end
+
 function replace_sym(s::Symbol,ex::Number,r)
 	return ex
 end
-function replace_sym(s::Symbol,ex::Symbol,r::Expr)
+function replace_sym(s::Symbol,ex::Symbol,r)
 	if(ex==s) return r
 	else return ex
 	end
 end
-function replace_sym(s::Symbol,ex::Expr, r::Expr) 
+function replace_sym(s::Symbol,ex::Expr, r) 
 	for i = 1:length(ex.args)
 		ex.args[i] = replace_sym(s,ex.args[i],r)
 	end
@@ -166,43 +167,40 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 end
 
 ##########################################################################################
-
+# one argument functions
 switchblock = Expr(:block)
-# @show switchblock
 for i = U_OP_START:U_OP_END
 	o = OP[i]
 	dx = S_TO_DIFF[o][1]
-	dx = replace_sym(:x,dx,"v[i]")
+	dx = replace_sym(:x,dx,"v")
 	# @show df
 	ex = Expr(:block)
-	push!(ex.args,Expr(:call,:push!,:imm,dx))
-	push!(ex.args,parse("r[1]=$(o)(v[i])"))
+	push!(ex.args,parse("@inbounds imm[imm_i]=$(dx)"))
+	push!(ex.args,:(@inbounds return $(o)(v)))
 	push!(switchblock.args,quot(o),ex)
 end
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
+@eval @inline function eval_1ord{I,V}(s::Symbol,v::V,imm::Array{V,1}, imm_i::I)
+	$switchexpr
+end
+
+# 2+ argument functions
+switchblock = Expr(:block)
 
 for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
 	if(o==:+ || o==:*)
 		continue
-	# if(o==:+)
-	# 	push!(ex.args,parse("ret = zero(V)"))
-	# 	push!(ex.args,parse("@simd for j=i:length(v) \n push!(imm,one(V)) \n ret += v[j] \n end"))
-	# 	push!(ex.args,parse("r[1] = ret"))
-	# elseif(o==:*)
-	# 	push!(ex.args,parse("ret = one(V)"))
-	# 	push!(ex.args,parse("@simd for j=i:length(v) \n ret *= v[j] \n end"))
-	# 	push!(ex.args,parse("r[1] = ret"))
-	# 	push!(ex.args,parse("@simd for j=i:length(v) \n push!(imm,r[1]/v[j]) \n end"))
 	else
 		(dx,dy) = S_TO_DIFF[o]
 		dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
 		dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
 		# @show dx, dy
 		ex = Expr(:block)
-		push!(ex.args,Expr(:call,:push!,:imm,dx))
-		push!(ex.args,Expr(:call,:push!,:imm,dy))
-		push!(ex.args,parse("r[1]=$(o)(v[i],v[i+1])"))
+		push!(ex.args,parse("@inbounds imm[imm_i]=$(dx)"))
+		push!(ex.args,parse("@inbounds imm[imm_i+1]=$(dy)"))
+		push!(ex.args,:(@inbounds return $(o)(v[i],v[i+1])))
 	end
 	push!(switchblock.args,quot(o),ex)
 end
@@ -210,27 +208,27 @@ end
 switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
 
 #should be auto generated code
-@eval function eval_1ord{I,V}(s::Symbol,v::Array{V,1},i::I,imm::Array{V,1},r::Array{V,1})
-	@inbounds if s==:+
+@eval @inline function eval_1ord{I,V}(s::Symbol,v::Array{V,1}, i::I, e::I, imm::Array{V,1}, imm_i::I)
+	if s==:+
 		ret = zero(V)
-		@simd for j=i:length(v) 
-			push!(imm,one(V))
-			ret += v[j]
+		@simd for j=i:e
+			@inbounds imm[imm_i] = one(V)
+			imm_i += 1
+			@inbounds ret += v[j]
 		end
-		r[1] = ret
-		return
+		return ret
 	elseif s==:*
-		ret = one(V)
-		@simd for j=i:length(v) 
-			ret *= v[j] 
+		@inbounds ret = v[i]
+		@simd for j=i+1:e
+			@inbounds ret *= v[j] 
 		end
-		r[1] = ret
-		@simd for j=i:length(v)
-			push!(imm,r[1]/v[j]) 
+		@simd for j=i:e
+			@inbounds imm[imm_i]=ret/v[j]
+			imm_i += 1
 		end
-		return
+		return ret
 	end
-	@inbounds $switchexpr
+	$switchexpr
 end
 
 ##########################################################################################

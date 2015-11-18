@@ -5,11 +5,9 @@
 function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
-	v = [zero(V)]
-	stk = Array{V,1}() #used for value evaluation
-	empty!(imm)  #used for immediate derrivative
-	sizehint!(stk,tape.maxoperands+20)
-	sizehint!(v,1)
+	stk = Vector{V}(tape.maxoperands+20) #used for value evaluation
+	stklen = 0
+	immlen = 0
 
 	@inbounds while(idx <= length(tt))
 		# @show idx
@@ -18,28 +16,39 @@ function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 		idx += 1
 		if(ntype == TYPE_P)
 			# tic()
-			push!(stk,pvals[tt[idx]])	
+			val = pvals[tt[idx]]
 			idx += 2 #skip TYPE_P
+			stklen += 1
+			stk[stklen] = val
 		elseif(ntype == TYPE_V)
-			push!(stk,vvals[tt[idx]])
+			val = vvals[tt[idx]]
 			idx += 2 #skip TYPE_V
+			stklen += 1
+			stk[stklen] = val
 		elseif(ntype == TYPE_O)
 			oc = tt[idx]
 			idx += 1
 			n = tt[idx]
 			idx += 1
 			idx += 1 #skip TYPE_O
-			# @show OP[oc],stk
-			# @show OP[oc], length(stk)-n+1, n
-			eval_1ord(OP[oc],stk,length(stk)-n+1,imm,v)
+			# @show stk
+			# @show OP[oc], stklen-n+1, stklen
+			if(n==1)
+				@inbounds stk[stklen] = eval_1ord(OP[oc],stk[stklen],imm,immlen+1)
+			else
+				@inbounds val = eval_1ord(OP[oc],stk,stklen-n+1,stklen,imm,immlen+1)
+				stklen -= n-1
+				@inbounds stk[stklen] = val
+			end
+			immlen += n
+			# @show immlen
 			# @show imm
-			# @show v
-			resize!(stk,length(stk)-n+1)
-			stk[end] = v[1]
 		end
+		# @show stklen
+		# @show stk
 		# println("++++++++++++++++++++++++++++++++++++")
 	end
-	# @show stk
+	return stk[1]
 end
 
 function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
@@ -105,9 +114,7 @@ function grad_structure{I}(tape::Tape{I}, ilist::Array{I,1})  #repeat version
 end
 
 function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{Tuple{I,V},1}) #sparse version
-	empty!(g)
-	imm = Array{V,1}()
-	sizehint!(imm,tape.nnode-1)			
+	imm = Vector{V}(tape.nnode-1)	
 	forward_pass_1ord(tape,vvals,pvals,imm)
 	reverse_pass_1ord(tape,imm,g)
 end
