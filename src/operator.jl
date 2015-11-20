@@ -363,12 +363,14 @@ end
 #building tape with Julia expression
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1})
 	vset = Set{I}()
-	tapeBuilder(expr,tape, pvals, vset)
+	istk = Vector{I}()
+	tapeBuilder(expr,tape, pvals, vset, istk)
 	tape.nvar = length(vset)
+	assert(length(tape.tr) == tape.nnode-1)
 	# @show tape
 end
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set{I})
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{I},istk::Vector{I})
 	tt = tape.tt
 	head = expr.head
 	if(head == :ref)  #a JuMP variable
@@ -377,7 +379,8 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set
 		push!(tt,TYPE_V)
 		push!(tt,vidx)
 		push!(tt,TYPE_V)
-
+		
+		push!(istk,length(tt)-2)
 		push!(vset,vidx)
 		tape.nvnode += 1
 		tape.nnode += 1
@@ -386,13 +389,20 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set
 		op = expr.args[1]
 		assert(typeof(op)==Symbol)
 		for i in 2:length(expr.args)
-			tapeBuilder(expr.args[i],tape,pvals,vset)
+			tapeBuilder(expr.args[i],tape,pvals,vset,istk)
 		end
 		n = length(expr.args)-1
 		push!(tt,TYPE_O)
 		push!(tt,S_TO_OC[op])
 		push!(tt,n)
 		push!(tt,TYPE_O)
+
+		t = Vector{I}()
+		for i=1:n
+			push!(t,pop!(istk))
+		end
+		append!(tape.tr,reverse!(t))
+		push!(istk,length(tt)-3)
 		tape.nnode += 1
 		tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
 		tape.imm2ord += n + round(I,n*(n+1)/2)
@@ -404,12 +414,14 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1}, vset::Set
     nothing
 end
 
-function tapeBuilder{I,V}(expr::Real, tape::Tape{I}, pvals::Array{V,1},vset::Set{I}) #a JuMP parameter
+function tapeBuilder{I,V}(expr::Real, tape::Tape{I}, pvals::Array{V,1},vset::Set{I},istk::Vector{I}) #a JuMP parameter
 	tt = tape.tt
 	push!(tt,TYPE_P)
-	push!(pvals,expr)
-	push!(tt,length(pvals))
+	push!(tt,length(pvals)+1)
 	push!(tt,TYPE_P)
+
+	push!(istk,length(tt)-2)
+	push!(pvals,expr)
 	tape.nnode += 1
 end
 

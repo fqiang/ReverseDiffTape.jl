@@ -10,16 +10,14 @@ typealias TV_TYPE Array{VV_TYPE,1}
 
 typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
-function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1}, tr::Array{I,1}, eset::EdgeSet{I,V})
+function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	# empty!(imm)  #used for immediate derrivative
 	# empty!(tr)
 	stk = Vector{V}(tape.maxoperands+20) #used for value evaluation
-	istk = Vector{I}(tape.maxoperands+20)
 	stklen = zero(I)
 	immlen = zero(I)
-	trlen = zero(I)
 	
 	@inbounds while(idx <= length(tt))
 		# @show idx
@@ -29,12 +27,10 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 		idx += 1
 		if(ntype == TYPE_P)
 			stklen += 1
-			istk[stklen] = idx-1
 			stk[stklen] = pvals[tt[idx]]
 			idx += 2 #skip TYPE_P
 		elseif(ntype == TYPE_V)
 			stklen += 1
-			istk[stklen] = idx-1
 			stk[stklen] = vvals[tt[idx]]
 			idx += 2 #skip TYPE_V
 		elseif(ntype == TYPE_O)
@@ -47,17 +43,12 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 			counter = zero(I)
 			if(n==1)
 				@inbounds (counter,stk[stklen]) = eval_2ord(OP[oc],stk[stklen],imm,immlen+1)
-				@inbounds tr[trlen+1] = istk[stklen]
 			else
 				@inbounds (counter,val) = eval_2ord(OP[oc],stk,stklen-n+1,stklen,imm,immlen+1)
-				# @inbounds tr[trlen+1:trlen+n] = @inbounds istk[stklen-n+1:stklen]
-				append_array(tr,trlen+1,istk,stklen-n+1,n)
 				stklen -= n-1
 				@inbounds stk[stklen] = val
 			end
-			trlen += n 
 			immlen += counter
-			istk[stklen] = idx - 4
 			# @show imm		
 			# @show stk[stklen]	
 		end
@@ -65,7 +56,6 @@ function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 		# println("++++++++++++++++++++++++++++++++++++")
 	end
 	tape.imm2ord = immlen
-	assert(tape.nnode-1==trlen)
 	# @show stklen
 	return stk[1]
 end
@@ -80,11 +70,17 @@ function make_edge{I,V}(eset::EdgeSet{I,V},i1::I,i2::I,w::V)
 end
 
 @inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
-	for i=0:n-1
+	for i=1:n
 		@inbounds dest[i+d_offset] = src[i+s_offset]
 	end
 end
 
+@inline function init_edgeset{I,V}(tr::Vector{I},eset::EdgeSet{I,V})
+	assert(isempty(eset))
+	@simd for i=1:length(tr)
+		@inbounds eset[tr[i]] = Dict{I,V}()
+	end
+end
 
 function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
 	assert(tt.nnode-1 == trlen)

@@ -63,6 +63,7 @@ end
 
 type Tape{I<:Int}
 	tt::Array{I,1}
+	tr::Array{I,1}
 	nvar::I
 	nvnode::I
 	nnode::I
@@ -70,11 +71,11 @@ type Tape{I<:Int}
 	imm2ord::I
 	
 	function Tape()
-		return new(Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		return new(Array{I,1}(),Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 	end
 
 	function Tape(data::Array{I,1})
-		this = new(data,zero(I),zero(I),zero(I),zero(I),zero(I))
+		this = new(data,Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 		analysize_tape(this)
 		return this
 	end
@@ -83,6 +84,7 @@ end
 function analysize_tape{I}(tape::Tape{I})
 	tt = tape.tt
 	idx = one(I)
+	istk = Vector{I}()
 	iset = Set{I}()
 	@inbounds while(idx <= length(tt))
 		# @show idx
@@ -90,20 +92,29 @@ function analysize_tape{I}(tape::Tape{I})
 		idx += 1
 		if(ntype == TYPE_P)
 			idx += 2 #skip TYPE_P
+			push!(istk,idx-3)
 		elseif(ntype == TYPE_V)
 			push!(iset,tt[idx])
 			idx += 2 #skip TYPE_V
 			tape.nvnode += 1
+			push!(istk,idx-3)
 		elseif(ntype == TYPE_O)
 			idx += 1  #skip oc
 			n = tt[idx]
 			idx += 2  #skip TYPE_O
-			tape.imm2ord = n + round(I,(n+1)*n/2)
+			tape.imm2ord = n + round(I,(n+1)*n/2)  #max estimation
 			tape.maxoperands<n?tape.maxoperands=n:nothing
+			
+			t = Vector{I}() #slow but works
+			for i = 1:n
+				push!(t,pop!(istk))
+			end
+			append!(tape.tr, reverse!(t))
+			push!(istk,idx-4)
 		end
 		tape.nnode += 1
 	end
-	tape.nvar += length(iset)
+	tape.nvar = length(iset)
 end
 
 immutable AD{I}
