@@ -178,19 +178,14 @@ function hess_structure{I,V}(tape::Tape{I},eset::EdgeSet{I,V})
 				end
 				# @show i,j
 				# @show ii,jj
-				eset[ii][jj] = 0.0
+				if(ii>=jj)  #only the lower trangular
+					eset[ii][jj] = 0.0
+				end
 			end
 		end
 	end	
 end
 
-
-@inline function init_edgeset{I,V}(tr::Vector{I},eset::EdgeSet{I,V})
-	assert(isempty(eset))
-	@simd for i=1:length(tr)
-		@inbounds eset[tr[i]] = Dict{I,V}()
-	end
-end
 
 function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
 	tt = tape.tt

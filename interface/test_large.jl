@@ -15,9 +15,9 @@ alpha = 350
 
 m = Model(solver=TapeSolver(IpoptSolver()))
 
-@defVar(m, -1 <= t[1:(ni+1)] <= 1)
-@defVar(m, -0.05 <= x[1:(ni+1)] <= 0.05)
-@defVar(m, u[1:(ni+1)])
+@defVar(m, -1 <= t[1:(ni+1)] <= 1);
+@defVar(m, -0.05 <= x[1:(ni+1)] <= 0.05);
+@defVar(m, u[1:(ni+1)]);
 
 @setNLObjective(m, Min, sum{ 0.5*h*(u[i+1]^2 + u[i]^2) + 0.5*alpha*h*(cos(t[i+1]) + cos(t[i])), i = 1:ni})
 

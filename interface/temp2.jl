@@ -1,5 +1,5 @@
 #temp2.jl
-include("test_megalarge.jl") 
+include("test_large.jl") 
  jd = m.internalModel.evaluator.jd;
  ex=MathProgBase.obj_expr(jd);
  using ReverseDiffTape
@@ -18,11 +18,6 @@ Profile.clear_malloc_data()
 # imm = Vector{Float64}(tt.nnode-1)        
 # ReverseDiffTape.forward_pass_1ord(tt,x,p,imm)
 
-imm=Vector{Float64}(tt.imm2ord);
-tr = Vector{Int}();
-eset=Dict{Int,Dict{Int,Float64}}();
-ReverseDiffTape.forward_pass_2ord(tt,x,p,imm,tr,eset)
-
 gtuple = Array{Tuple{Int,Float64},1}();
 sizehint!(gtuple, tt.nvnode)
 @time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
@@ -36,14 +31,27 @@ g = Array{Float64,1}(length(x));
 @time ReverseDiffTape.grad_reverse(tt,x,p,g)
 jg = Array{Float64,1}(length(x));
 @time MathProgBase.eval_grad_f(jd,jg,x)
-
 TapeInterface.assertArrayEqualEps(g,jg)
+
+
+imm=Vector{Float64}(tt.imm2ord);
+@time ReverseDiffTape.forward_pass_2ord(tt,x,p,imm)
+eset=EdgeSet{Int,Float64}()
+@time ReverseDiffTape.hess_structure(tt,eset)
+
+
+###############
+
 
 Profile.clear_malloc_data()
 gtuple = Array{Tuple{Int,Float64},1}();
 sizehint!(gtuple, tt.nvnode)
 @time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
 @time MathProgBase.eval_grad_f(jd,jg,x)
+
+
+jH = Array{Float64,1}(length(jd.hess_I)) 
+
 
 
 ##########  test build using types

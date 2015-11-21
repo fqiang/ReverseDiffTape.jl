@@ -31,8 +31,8 @@ function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 			n = tt[idx]
 			idx += 1
 			idx += 1 #skip TYPE_O
-			# @show stk
 			# @show OP[oc], stklen-n+1, stklen
+			# @show OP[oc], stk[stklen-n+1:stklen]
 			if(n==1)
 				@inbounds stk[stklen] = eval_1ord(OP[oc],stk[stklen],imm,immlen+1)
 			else
@@ -40,6 +40,8 @@ function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 				stklen -= n-1
 				@inbounds stk[stklen] = val
 			end
+			# @show stk[stklen]
+			# @show imm[immlen+1:immlen+n]
 			immlen += n
 			# @show immlen
 			# @show imm
@@ -52,6 +54,8 @@ function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 end
 
 function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
+	# @show imm
+	# assert(length(imm) == tape.nnode -1)
 	tt = tape.tt
 	idx = length(tt)
 	immlen = length(imm)
@@ -67,6 +71,8 @@ function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V
 		if(ntype == TYPE_P)
 			idx -= 2
 		elseif(ntype == TYPE_V)
+			# @show tt[idx],adj
+			# adj=isnan(adj)?0.0:adj
 			push!(g,(tt[idx],adj))
 			idx -= 2
 		elseif(ntype == TYPE_O)
@@ -126,8 +132,11 @@ function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g:
 	sizehint!(grad,tape.nvnode)
 	grad_reverse(tape,vvals,pvals,grad)
 	
+	# @show grad
 	fill!(g,zero(V))
+	# @show g
 	@inbounds @simd for i = 1:length(grad)
 		g[grad[i][1]] += grad[i][2]
 	end
+	# @show g
 end

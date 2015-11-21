@@ -218,13 +218,7 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     assert(length(g) == length(x))
     fill!(g,0.0)
     tic()
-    grad = Array{Tuple{Int, Float64},1}()
-    grad_reverse(d.obj_tt,x,d.pvals,grad)
-    for i=1:length(grad)
-        (idx,v) = grad[i]
-        g[idx] += v
-    end
-
+    grad_reverse(d.obj_tt,x,d.pvals,g)
     d.eval_grad_f_timer += toq()
     # @show g
    
@@ -272,7 +266,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     I = Array{Int, 1}()
     J = Array{Int, 1}()
     idxes = Array{Int,1}()
-    for i=1:1:d.numConstr
+    for i=1:d.numConstr
         grad_structure(d.constr_tt[i],idxes)
         state = start(idxes)
         while !done(idxes,state)
@@ -295,7 +289,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     jcsc = sparse(jI,jJ,jV)
     # @show jI
     # @show jJ
-
+    
     # @show csc
     # @show jcsc
     # @show csc.colptr
@@ -316,17 +310,13 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     assert(d.jac_nnz != -1)
     assert(length(d.jac_I) == length(d.jac_J))
     assert(length(J) == d.jac_nnz)
+    fill!(J,0.0)
 
     tic()
     g = Array{Tuple{Int,Float64},1}()
-    prev_row = 0
-    for i = 1:1:length(d.jac_I)
-        row = d.jac_I[i]
-        if(row!=prev_row) 
-            grad_reverse(d.constr_tt[row],x,d.pvals,g) #sparse version
-        end
-        prev_row = row
-    end   
+    for i = 1:d.numConstr
+        grad_reverse(d.constr_tt[i],x,d.pvals,g)
+    end
 
     for i =1:length(g)
         (idx,v) = g[i]
@@ -334,7 +324,7 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     end
     d.eval_jac_g_timer += toq()
     
-
+    # @show J
     csc = sparse(d.jac_I,d.jac_J,J)
 
     tic()
@@ -342,17 +332,19 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     MathProgBase.eval_jac_g(d.jd,jJ,x)
     d.jeval_jac_g_timer += toq()
 
+    # @show jJ
     jcsc = sparse(d.jd.jac_I,d.jd.jac_J,jJ)
 
-    
-    assert(csc.colptr == jcsc.colptr)
-    assert(csc.rowval == jcsc.rowval)
     # @show csc.nzval
     # @show jcsc.nzval
-    assertArrayEqualEps(csc.nzval,jcsc.nzval)
     assert(csc.m == jcsc.m)
     assert(csc.n == jcsc.n)
 
+    # assert(csc.colptr == jcsc.colptr)
+    # assert(csc.rowval == jcsc.rowval)
+   
+    assertArrayEqualEps(csc.nzval,jcsc.nzval)
+   
     # @show d.eval_jac_g_timer
     # @show d.jd.eval_jac_g_timer
     return
@@ -378,7 +370,7 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     I = Array{Int,1}()
     J = Array{Int,1}()
 
-    veset = Set{Edge}()
+    veset = EdgeSet{Int,Float64}()
     # println("obj ",MathProgBase.obj_expr(d.jd))
     hess_structure(d.obj_tt,veset)
 
@@ -387,40 +379,49 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
         hess_structure(d.constr_tt[i],veset)
     end
     
-    state = start(veset)
-    while !done(veset,state)
-        (e,state) = next(veset,state)
-        push!(I,e.lidx)
-        push!(J,e.ridx)
+    for p0 in veset
+        i = p0[1]
+        for p1 in p0[2]
+            j = p1[1]
+            push!(I,i)
+            push!(J,j)
+        end
     end
-
+    
     assert(length(I) == length(J))
     V = ones(Float64,length(I))
     csc = sparse(I,J,V)
-    # @show I
-    # @show J
+    @show I
+    @show J
 
 
     (jI, jJ) = MathProgBase.hesslag_structure(d.jd)
     assert(length(jI) == length(jJ))
     jV = ones(Float64,length(jI))
     jcsc = sparse(jI,jJ,jV)
-    # @show jI
-    # @show jJ
+    @show jI
+    @show jJ
+
+    
+
+   
 
     # @show csc
     # @show jcsc
     # @show csc.colptr
     # @show jcsc.colptr
-    # assert(csc.colptr == jcsc.colptr)
-    # assert(csc.rowval == jcsc.rowval)
     # assert(csc.m == jcsc.m)
     # assert(csc.n == jcsc.n)
+    # assert(csc.colptr == jcsc.colptr)
+    # assert(csc.rowval == jcsc.rowval)
+
     
-    d.laghess_nnz = true
-    d.laghess_I = I
-    d.laghess_J = J
-    return  d.laghess_I, d.laghess_J
+    # d.laghess_nnz = true
+    # d.laghess_I = I
+    # d.laghess_J = J
+    # return  d.laghess_I, d.laghess_J
+    return jI,jJ
+
 end
 
 function MathProgBase.eval_hesslag(
@@ -430,41 +431,43 @@ function MathProgBase.eval_hesslag(
     obj_factor::Float64,        # Lagrangian multiplier for objective
     lambda::Vector{Float64})    # Multipliers for each constraint
     
-    assert(length(lambda) == d.numConstr)
-    assert(length(H) == length(d.laghess_J))
-    assert(length(H) == length(d.laghess_I))
+    # assert(length(lambda) == d.numConstr)
+    # assert(length(H) == length(d.laghess_J))
+    # assert(length(H) == length(d.laghess_I))
+
+    # tic()
+
+    # # assert(false) #TODO reverse hess ep
+    # eset = EdgeSet()
+    # reverse_hess_ep(d.obj_tt,x,d.pvals,obj_factor,eset)
+
+    # for i=1:d.numConstr
+    #     reverse_hess_ep(d.constr_tt[i],x,d.pvals,lambda[i],eset)
+    # end
+
+    # j = 1
+    # state = start(eset)
+    # while !done(eset,state)
+    #     (e,state) = next(eset,state)
+    #     H[j] = e.second
+    #     j += 1
+    # end
+
+    # ### or using BLAS function -- not sure
+    # # obj_hess = sparse(d.laghess_I,d.laghess_J)
+    # # 
+    # # 
+    # d.eval_hesslag_timer += toq()
+
+    # # csc = sparse(d.laghess_I,d.laghess_J,H)
+    # # @show csc
 
     tic()
-    eset = EdgeSet()
-    reverse_hess_ep(d.obj_tt,x,d.pvals,obj_factor,eset)
-
-    for i=1:d.numConstr
-        reverse_hess_ep(d.constr_tt[i],x,d.pvals,lambda[i],eset)
-    end
-
-    j = 1
-    state = start(eset)
-    while !done(eset,state)
-        (e,state) = next(eset,state)
-        H[j] = e.second
-        j += 1
-    end
-
-    ### or using BLAS function -- not sure
-    # obj_hess = sparse(d.laghess_I,d.laghess_J)
-    # 
-    # 
-    d.eval_hesslag_timer += toq()
-
-    # csc = sparse(d.laghess_I,d.laghess_J,H)
-    # @show csc
-
-    tic()
-    jH = Array{Float64,1}(length(d.jd.hess_I))
-    MathProgBase.eval_hesslag(d.jd,jH,x,obj_factor,lambda)
+    # H = Array{Float64,1}(length(d.jd.hess_I))
+    MathProgBase.eval_hesslag(d.jd,H,x,obj_factor,lambda)
     d.jeval_hesslag_timer += toq()
 
-
+    
     # @show d.jd.hess_I
     # @show d.jd.hess_J
     # @show jH
@@ -483,7 +486,9 @@ end
 function assertArrayEqualEps(a1,a2)
     assert(length(a1)==length(a2))
     for i=1:length(a1)
-        assert(abs(a1[i]-a2[i])<EPS)
+        v1 = a1[i]
+        v2 = a2[i]
+        assert(abs(v1-v2)<EPS)
     end
 end
 

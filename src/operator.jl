@@ -229,9 +229,19 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		@simd for j=i+1:e
 			@inbounds ret *= v[j] 
 		end
-		@simd for j=i:e
-			@inbounds imm[imm_i]=ret/v[j]
-			imm_i += 1
+		# @simd for j=i:e  #unstable numerics for zero valued 
+		# 	@inbounds imm[imm_i]=ret/v[j]
+		# 	imm_i += 1
+		# end
+		@simd for j0=i:e
+			c=one(V)
+			@simd for j1=i:e
+				if(j0!=j1)
+					c*=v[j1]
+				end
+			end
+			imm[imm_i] = c
+			imm_i+=1
 		end
 		return ret
 	elseif s==:^
@@ -240,7 +250,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		if exponent == 2
 			imm[imm_i] = 2*base
 			t = base*base
-			imm[imm_i+1] = t*log(base)
+			imm[imm_i+1] = t==0?0:t*log(base) #not sure if this is way to handle log(-negative)
 			return t
 		else
 			imm[imm_i] = exponent*base^(exponent-1)
