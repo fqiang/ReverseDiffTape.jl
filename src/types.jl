@@ -64,6 +64,7 @@ end
 type Tape{I<:Int}
 	tt::Array{I,1}
 	tr::Array{I,1}
+	liveVar::Dict{I,Set{I}}
 	nvar::I
 	nvnode::I
 	nnode::I
@@ -71,11 +72,11 @@ type Tape{I<:Int}
 	imm2ord::I
 	
 	function Tape()
-		return new(Array{I,1}(),Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		return new(Array{I,1}(),Array{I,1}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 	end
 
 	function Tape(data::Array{I,1})
-		this = new(data,Array{I,1}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		this = new(data,Array{I,1}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 		analysize_tape(this)
 		return this
 	end

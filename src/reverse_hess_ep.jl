@@ -75,6 +75,116 @@ end
 	end
 end
 
+
+function hess_structure{I,V}(tape::Tape{I},eset::EdgeSet{I,V})
+	tt = tape.tt
+	tr = tape.tr
+	idx = length(tt)
+	trlen = length(tr)
+	vidx = Set{I}()
+	# @show tape.nnode-1, length(tr)
+	assert(tape.nnode-1 == length(tr))
+	# assert(isempty(eset))
+	
+	while (idx > 0)
+		ntype = tt[idx]
+		idx -= 1
+		if(ntype == TYPE_P)
+			idx -= 2
+		elseif(ntype == TYPE_V)
+			idx -= 2
+			push!(vidx,idx+1)
+		elseif(ntype == TYPE_O)
+			n = tt[idx]
+			idx -= 1
+			oc = tt[idx]
+			idx -= 2
+
+			#pushing
+			i = idx + 1
+			lvi = tape.liveVar[i] #live var set at i
+			for j=trlen-n+1:trlen  #construct live var set for each children
+				ci = tr[j]  #child of i
+				tape.liveVar[ci] = Set{I}() 
+			end
+			for p in lvi  #for each 
+				if(i==p)
+					for j0=trlen-n+1:trlen  #construct live var set for each children
+						ci = tr[j0] #child of i
+						push!(tape.liveVar[ci],ci)
+						for j1=trlen-n+1:trlen
+							cii = tr[j1] #child of i
+							push!(tape.liveVar[ci],cii)
+						end 
+					end
+				else
+					for j0 = trlen-n+1:trlen	
+						ci = tr[j0]
+						push!(tape.liveVar[ci],p)
+					end
+				end
+			end
+
+			#creating
+			if(U_OP_START<=oc<=U_OP_END)
+				# @show OP[oc],d
+				d = S_TO_DIFF_FLAG[OP[oc]]
+				if(d[1]==false) #not zero
+					ci = tr[trlen]
+					push!(tape.liveVar[ci],ci)
+				end
+			elseif (OP[oc] == :*) #special case for *
+				for j0=trlen-n+1:trlen  #construct live var set for each children
+					ci = tr[j0]
+					for j1=trlen-n+1:trlen
+						if(j0!=j1)
+							cii = tr[j1]
+							# @show OP[oc],ci,cii
+							push!(tape.liveVar[ci],cii)
+						end
+					end
+				end
+			else
+				ri = tr[trlen]
+				li = tr[trlen-1]
+				d = S_TO_DIFF_FLAG[OP[oc]]
+				if(d[1] == false)
+					push!(tape.liveVar[li],li)
+				end
+				if(d[2] == false)
+					push!(tape.liveVar[ri],li)
+					push!(tape.liveVar[li],ri) #even though weight are same, create anyway.
+				end
+				if(d[3] == false)
+					push!(tape.liveVar[ri],ri)
+				end
+			end
+			trlen -= n
+		end
+	end
+
+	# @show vidx
+	for i in vidx
+		# @show i
+		lvi = tape.liveVar[i]
+		# @show lvi
+		for j in lvi
+			# @show j
+			ii = tt[i+1]
+			if tt[j] == TYPE_V
+				jj = tt[j+1]
+				if(!haskey(eset,ii))
+					eset[ii] = Dict{I,V}()
+				end
+				# @show i,j
+				# @show ii,jj
+				eset[ii][jj] = 0.0
+			end
+		end
+	end	
+end
+
+
 @inline function init_edgeset{I,V}(tr::Vector{I},eset::EdgeSet{I,V})
 	assert(isempty(eset))
 	@simd for i=1:length(tr)
@@ -83,10 +193,8 @@ end
 end
 
 function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
-	assert(tt.nnode-1 == trlen)
 	tt = tape.tt
 	idx = length(tt)
-	trlen = tt.nnode-1
 	immlen = tt.imm2ord
 
 	adjs = Array{V,1}()

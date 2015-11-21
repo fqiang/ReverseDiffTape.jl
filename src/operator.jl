@@ -8,6 +8,7 @@ const B_OP_START = 1
 const OP = Array{Symbol,1}([:+,:-,:*,:/,:^])
 const S_TO_OC = Dict{Symbol,OP_TYPE}()
 const S_TO_DIFF = Dict{Symbol,Array{Any,1}}()
+const S_TO_DIFF_FLAG = Dict{Symbol,Array{Bool,1}}()
 const B_OP_END = length(OP)
 const U_OP_START = B_OP_END + 1
 
@@ -36,18 +37,24 @@ for sym in OP
 	(dx,dy) = differentiate("x $(sym) y",[:x,:y])
 	# @show dx, dy
 	dxx = differentiate(dx,:x)
+	dxxi = dxx == 0? true:false
 	# @show dxx
 	dxy = differentiate(dx,:y)
+	dxyi = dxx == 0? true:false
 	# @show dxy
 	dyy = differentiate(dy,:y)
+	dyyi = dxx == 0? true:false
 	# @show dyy
 	S_TO_DIFF[sym] = [dx,dy,dxx,dxy,dyy]
+	S_TO_DIFF_FLAG[sym] = [dxxi,dxyi,dyyi]
 end
 
 for (sym, dx) = symbolic_derivatives_1arg()
 	push!(OP,sym)
 	try 
 		dxx = differentiate(dx,:x)
+		dxxi = dxx == 0? true:false
+		S_TO_DIFF_FLAG[sym] = [dxxi]
 		S_TO_DIFF[sym] = [dx,dxx]
 	catch e
 		pop!(OP)
@@ -384,6 +391,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{
 		push!(vset,vidx)
 		tape.nvnode += 1
 		tape.nnode += 1
+		tape.liveVar[length(tt)-2] = Set{I}()
 	elseif(head == :call)
 		# @show expr.args[2]
 		op = expr.args[1]
@@ -406,6 +414,8 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{
 		tape.nnode += 1
 		tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
 		tape.imm2ord += n + round(I,n*(n+1)/2)
+		tape.liveVar[length(tt)-3] = Set{I}()
+		# @show length(tt) - 3
     else
     	println("error !")
     	dump(expr)
@@ -423,6 +433,7 @@ function tapeBuilder{I,V}(expr::Real, tape::Tape{I}, pvals::Array{V,1},vset::Set
 	push!(istk,length(tt)-2)
 	push!(pvals,expr)
 	tape.nnode += 1
+	tape.liveVar[length(tt)-2] = Set{I}()
 end
 
 ##########################################################################################
