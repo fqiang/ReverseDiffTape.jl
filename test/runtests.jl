@@ -81,7 +81,7 @@ facts("Reverse gradient sin(x1*x2*x3*x4)") do
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> cos(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
 	@fact grad[2] --> cos(1.1*2.2*3.3*4.4)*1.1*3.3*4.4
-	@fact grad[3] --> cos(1.1*2.2*3.3*4.4)*1.1*2.2*4.4
+	@fact grad[3] --> roughly(cos(1.1*2.2*3.3*4.4)*1.1*2.2*4.4)
 	@fact grad[4] --> cos(1.1*2.2*3.3*4.4)*1.1*2.2*3.3	
 end
 
@@ -100,7 +100,7 @@ facts("Reverse gradient cos(x1*x2*x3*x4)") do
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> -sin(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
 	@fact grad[2] --> -sin(1.1*2.2*3.3*4.4)*1.1*3.3*4.4
-	@fact grad[3] --> -sin(1.1*2.2*3.3*4.4)*1.1*2.2*4.4
+	@fact grad[3] --> roughly(-sin(1.1*2.2*3.3*4.4)*1.1*2.2*4.4)
 	@fact grad[4] --> -sin(1.1*2.2*3.3*4.4)*1.1*2.2*3.3	
 end
 
@@ -113,8 +113,8 @@ facts("Hessian EP algorithm x1^2") do
 	p2 = AD_P(p,2)
 	c = x1^p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -130,8 +130,8 @@ facts("Hessian EP algorithm x1^2*x2^2") do
 	p2 = AD_P(p,2)
 	c = x1^p2*x2^p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -153,8 +153,8 @@ facts("Hessian EP algorithm sin(x1)") do
 	x1 = AD_V(x,1.1)
 	c = sin(x1)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -168,8 +168,8 @@ facts("Hessian EP algorithm cos(x1)") do
 	x1 = AD_V(x,1.1)
 	c = cos(x1)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -183,8 +183,8 @@ facts("Hessian EP algorithm x1*x2") do
 	x2 = AD_V(x,2.2)
 	c = x1*x2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h12 = Edge(tt,1,2)
 	@fact length(eset) --> 1
 	@fact eset[h12] --> 1
@@ -198,8 +198,8 @@ facts("Hessian EP algorithm sin(x1*x2)") do
 	x2 = AD_V(x,2.2)
 	c = sin(x1*x2)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -217,8 +217,8 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 	x1 = AD_V(x,1.1)
 	c = cos(sin(x1))
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact eset[h11] --> sin(sin(1.1))*sin(1.1) - cos(sin(1.1))*(cos(1.1)^2)
@@ -232,8 +232,8 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 	x2 = AD_V(x,2.2)
 	c = cos(sin(x1*x2))
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 3
 	@fact eset[h11] --> roughly(2.2^2*sin(sin(1.1*2.2))*sin(1.1*2.2)-2.2^2*cos(sin(1.1*2.2))*cos(1.1*2.2)^2)
@@ -245,8 +245,8 @@ facts("Hessian EP algorithm x1*x1") do
 	x1 = AD_V(x,1.1)
 	c = x1*x1
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact eset[h11] --> 2
@@ -259,8 +259,8 @@ facts("Hessian EP algorithm cos(x1*x2)") do
 	x2 = AD_V(x,2.2)
 	c = cos(x1*x2)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -285,8 +285,8 @@ facts("Hessian EP algorithm x1*x1*x2*x2") do
 	p2 = AD_P(p,2)
 	c = x1*x1*x2*x2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	h12 = Edge(tt,1,2)
 	h21 = Edge(tt,2,1)
@@ -309,8 +309,8 @@ facts("Hessian EP algorithm x1*x1*x1") do
 	p2 = AD_P(p,2)
 	c = x1*x1*x1
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	@fact length(eset) --> 1
 	@fact haskey(eset,h11) --> true
@@ -327,8 +327,8 @@ facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
 	p2 = AD_P(p, 2)
 	c = sin(x1)+cos(x2^p2) * p1 - x3*p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet()
-	reverse_hess_ep(tt,x,p,eset)
+	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
+	hess_reverse(tt,x,p,eset)
 	h11 = Edge(tt,1,1)
 	h22 = Edge(tt,2,2)
 	nzeset = Set{Edge}()

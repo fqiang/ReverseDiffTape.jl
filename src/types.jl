@@ -149,14 +149,19 @@ function AD_P{V}(pvals::Array{V,1},val)
 end
 
 function AD_O{I}(s::Symbol,l::AD{I})
-	@show s
 	this = AD{I}(Array{I,1}())
 	append!(this.data,l.data)
 	push!(this.data,TYPE_O)
 	push!(this.data,S_TO_OC[s])
 	push!(this.data,1) #1 operand simply 
 	push!(this.data,TYPE_O)
+	return this
 end
+
+function AD_O{I}(s::Symbol,l::AD{I},r::AD{I})
+	AD_O(s,tuple(l,r))
+end
+
 function AD_O{I,N}(s::Symbol,args::NTuple{N,AD{I}})
 	# @show s
 	# @show args
