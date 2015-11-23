@@ -2,7 +2,7 @@
 # forward pass on the tape tt, to build ss stack
 
 #forward pass on the scalar function
-function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	stk = Vector{V}(tape.maxoperands+20) #used for value evaluation
@@ -53,7 +53,7 @@ function forward_pass_1ord{V,I}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 	return stk[1]
 end
 
-function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V},1})
+function reverse_pass_1ord{I,V}(tape::Tape{I,V},imm::Array{V,1},g::Array{Tuple{I,V},1})
 	# @show imm
 	# assert(length(imm) == tape.nnode -1)
 	tt = tape.tt
@@ -87,7 +87,7 @@ function reverse_pass_1ord{V,I}(tape::Tape{I},imm::Array{V,1},g::Array{Tuple{I,V
 	end
 end
 
-function grad_struct{I}(tape::Tape{I}, ilist::Array{I,1}) #repeated indexes, in reverse tracing order
+function grad_struct{I,V}(tape::Tape{I,V}, ilist::Array{I,1}) #repeated indexes, in reverse tracing order
 	tt = tape.tt
 	idx = length(tt)
 	@inbounds while(idx > 0)
@@ -105,7 +105,7 @@ function grad_struct{I}(tape::Tape{I}, ilist::Array{I,1}) #repeated indexes, in 
 end
 
 #Interface function
-function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
+function grad_structure{I,V}(tape::Tape{I,V}, iset::Set{I}) #non repeat version
 	ilist = Array{I,1}()
 	sizehint!(ilist, tape.nvnode)
 	grad_struct(tape,ilist)
@@ -116,18 +116,18 @@ function grad_structure{I}(tape::Tape{I}, iset::Set{I}) #non repeat version
 	end
 end
 
-function grad_structure{I}(tape::Tape{I}, ilist::Array{I,1})  #repeat version
+function grad_structure{I,V}(tape::Tape{I,V}, ilist::Array{I,1})  #repeat version
 	empty!(ilist)
 	grad_struct(tape,ilist)
 end
 
-function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{Tuple{I,V},1}) #sparse version
+function grad_reverse{I,V}(tape::Tape{I,V},vvals::Array{V,1},pvals::Array{V,1}, g::Array{Tuple{I,V},1}) #sparse version
 	imm = Vector{V}(tape.nnode-1)	
 	forward_pass_1ord(tape,vvals,pvals,imm)
 	reverse_pass_1ord(tape,imm,g)
 end
 
-function grad_reverse{V,I}(tape::Tape{I},vvals::Array{V,1},pvals::Array{V,1}, g::Array{V,1})  #dense version
+function grad_reverse{I,V}(tape::Tape{I,V},vvals::Array{V,1},pvals::Array{V,1}, g::Array{V,1})  #dense version
 	grad = Array{Tuple{I,V},1}()
 	sizehint!(grad,tape.nvnode)
 	grad_reverse(tape,vvals,pvals,grad)

@@ -93,9 +93,9 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     jd::MathProgBase.AbstractNLPEvaluator
     numVar::Int
     numConstr::Int
-    pvals::TV_TYPE
-    obj_tt::Tape{Int}
-    constr_tt::Array{Tape{Int},1}
+    pvals::Vector{Float64}
+    obj_tt::Tape{Int,Float64}
+    constr_tt::Array{Tape{Int,Float64},1}
 
     jac_I::Array{Int,1}
     jac_J::Array{Int,1}
@@ -123,8 +123,8 @@ end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr)
  	return TapeNLPEvaluator(nlpe, 
-        numVar,numConstr,TV_TYPE(), 
-        Tape{Int}(), Array{Tape{Int},1}(), 
+        numVar,numConstr,Vector{Float64}(), 
+        Tape{Int,Float64}(), Array{Tape{Int,Float64},1}(), 
         Array{Int,1}(), Array{Int,1}(),-1,
         Array{Int,1}(), Array{Int,1}(),false, 
         0.0, 0.0, 0.0, 0.0, 0.0,
@@ -172,7 +172,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     for i =1:1:d.numConstr
 	   conexpr = MathProgBase.constr_expr(jd,i)
        # @show conexpr.args[1]
-       tt = Tape{Int}()
+       tt = Tape{Int,Float64}()
        tapeBuilder(conexpr.args[1],tt,d.pvals)
        push!(d.constr_tt,tt)
        # @show d.constr_tt[i]
@@ -370,19 +370,18 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     I = Array{Int,1}()
     J = Array{Int,1}()
 
-    veset = EdgeSet{Int,Float64}()
+    veset = Dict{Int,Set{Int}}()
     # println("obj ",MathProgBase.obj_expr(d.jd))
-    hess_structure(d.obj_tt,veset)
+    hess_structure_lower(d.obj_tt,veset)
 
     for i=1:d.numConstr
         # println(i," ",MathProgBase.constr_expr(d.jd,i))
-        hess_structure(d.constr_tt[i],veset)
+        hess_structure_lower(d.constr_tt[i],veset)
     end
     
     for p0 in veset
         i = p0[1]
-        for p1 in p0[2]
-            j = p1[1]
+        for j in p0[2]
             push!(I,i)
             push!(J,j)
         end

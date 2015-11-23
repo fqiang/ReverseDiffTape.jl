@@ -40,11 +40,13 @@ for sym in OP
 	dxxi = dxx == 0? true:false
 	# @show dxx
 	dxy = differentiate(dx,:y)
-	dxyi = dxx == 0? true:false
+	dxyi = dxy == 0? true:false
 	# @show dxy
 	dyy = differentiate(dy,:y)
-	dyyi = dxx == 0? true:false
+	dyyi = dyy == 0? true:false
 	# @show dyy
+	# @show sym,dxx,dxy,dyy
+	# @show sym,dxxi,dxyi,dyyi
 	S_TO_DIFF[sym] = [dx,dy,dxx,dxy,dyy]
 	S_TO_DIFF_FLAG[sym] = [dxxi,dxyi,dyyi]
 end
@@ -378,7 +380,7 @@ end
 ##########################################################################################
 
 #building tape with Julia expression
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1})
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
 	vset = Set{I}()
 	istk = Vector{I}()
 	tapeBuilder(expr,tape, pvals, vset, istk)
@@ -387,7 +389,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1})
 	# @show tape
 end
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{I},istk::Vector{I})
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},vset::Set{I},istk::Vector{I})
 	tt = tape.tt
 	head = expr.head
 	if(head == :ref)  #a JuMP variable
@@ -401,6 +403,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{
 		push!(vset,vidx)
 		tape.nvnode += 1
 		tape.nnode += 1
+		tape.eset[length(tt)-2] = Dict{I,V}()
 		tape.liveVar[length(tt)-2] = Set{I}()
 	elseif(head == :call)
 		# @show expr.args[2]
@@ -424,6 +427,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{
 		tape.nnode += 1
 		tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
 		tape.imm2ord += n + round(I,n*(n+1)/2)
+		tape.eset[length(tt)-3] = Dict{I,V}()
 		tape.liveVar[length(tt)-3] = Set{I}()
 		# @show length(tt) - 3
     else
@@ -434,7 +438,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I}, pvals::Array{V,1},vset::Set{
     nothing
 end
 
-function tapeBuilder{I,V}(expr::Real, tape::Tape{I}, pvals::Array{V,1},vset::Set{I},istk::Vector{I}) #a JuMP parameter
+function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Array{V,1},vset::Set{I},istk::Vector{I}) #a JuMP parameter
 	tt = tape.tt
 	push!(tt,TYPE_P)
 	push!(tt,length(pvals)+1)
@@ -443,6 +447,7 @@ function tapeBuilder{I,V}(expr::Real, tape::Tape{I}, pvals::Array{V,1},vset::Set
 	push!(istk,length(tt)-2)
 	push!(pvals,expr)
 	tape.nnode += 1
+	tape.eset[length(tt)-2] = Dict{I,V}()
 	tape.liveVar[length(tt)-2] = Set{I}()
 end
 
@@ -452,7 +457,7 @@ end
 #
 ##########################################################################################
 function tapeBuilder{I}(data::Array{I,1})
-	tape = Tape{I}(data)
+	tape = Tape{I,V}(data)
 	return tape
 end
 

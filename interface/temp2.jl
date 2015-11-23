@@ -1,11 +1,12 @@
 #temp2.jl
 include("test_large.jl") 
- jd = m.internalModel.evaluator.jd;
- ex=MathProgBase.obj_expr(jd);
- using ReverseDiffTape
- tt = Tape{Int}()
- p = Array{Float64,1}()
- tapeBuilder(ex,tt,p)
+using ReverseDiffTape
+jd = m.internalModel.evaluator.jd;
+ex=MathProgBase.obj_expr(jd);
+
+tt = Tape{Int,Float64}();
+p = Vector{Float64}();
+tapeBuilder(ex,tt,p);
 x=rand(m.numCols);
 
 @time ReverseDiffTape.feval(tt,x,p)
@@ -36,7 +37,7 @@ TapeInterface.assertArrayEqualEps(g,jg)
 
 imm=Vector{Float64}(tt.imm2ord);
 @time ReverseDiffTape.forward_pass_2ord(tt,x,p,imm)
-eset=EdgeSet{Int,Float64}()
+eset=Dict{Int,Set{Int}}();
 @time ReverseDiffTape.hess_structure(tt,eset)
 
 

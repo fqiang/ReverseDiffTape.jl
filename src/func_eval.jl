@@ -1,6 +1,6 @@
 
 #forward evaluation for a scalar function
-function forward_pass_0ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1})
+function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	
@@ -46,7 +46,7 @@ function forward_pass_0ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V
 end
 
 ## Interface method
-function feval{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1})
+function feval{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
 	val = forward_pass_0ord(tape,vvals,pvals)
 	return val
 end

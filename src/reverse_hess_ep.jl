@@ -1,11 +1,10 @@
 typealias IDX_TYPE Int
-typealias VV_TYPE Float64
 
 #edge pusing algorithm for Hessian reverse AD
 
 typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
-function forward_pass_2ord{I,V}(tape::Tape{I}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
+function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
 	# empty!(imm)  #used for immediate derrivative
@@ -62,8 +61,26 @@ end
 	end
 end
 
+@inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
+	# @show i1
+	eset[i1][i1] = 0.0
+end
 
-function hess_struct{I,V}(tape::Tape{I},eset::EdgeSet{I,V})
+@inline function push_edge{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,lo::Bool)
+	# @show i1,i2,lo
+	assert(i1!=i2)
+	if(lo) #lower
+		i1<i2? eset[i2][i1] = 0.0:eset[i2][i1] = 0.0
+	else  #upper
+		i1<i2? eset[i1][i2] = 0.0:eset[i1][i2] = 0.0
+	end
+end
+
+@inline function push_live_var{I}(liveVar::Dict{I,Set{I}},i1::I,i2::I)
+	push!(liveVar[i1],i2)
+end
+
+function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 	tt = tape.tt
 	tr = tape.tr
 	idx = length(tt)
@@ -90,60 +107,76 @@ function hess_struct{I,V}(tape::Tape{I},eset::EdgeSet{I,V})
 			#pushing
 			i = idx + 1
 			lvi = tape.liveVar[i] #live var set at i
-			for j=trlen-n+1:trlen  #construct live var set for each children
-				ci = tr[j]  #child of i
-				tape.liveVar[ci] = Set{I}() 
-			end
+			# for j=trlen-n+1:trlen  #construct live var set for each children
+			# 	ci = tr[j]  #child of i
+			# 	tape.liveVar[ci] = Dict{I,V}() 
+			# end
+
 			for p in lvi  #for each 
 				if(i==p)
 					for j0=trlen-n+1:trlen  #construct live var set for each children
 						ci = tr[j0] #child of i
-						push!(tape.liveVar[ci],ci)
-						for j1=trlen-n+1:trlen
+						push_live_var(tape.liveVar,ci,ci)
+						push_diag(tape.eset,ci)
+						for j1=j0+1:trlen
 							cii = tr[j1] #child of i
-							push!(tape.liveVar[ci],cii)
+							assert(ci<cii) #ci always smaller since tr building
+							push_live_var(tape.liveVar,ci,cii)
+							push_live_var(tape.liveVar,cii,ci)
+							push_edge(tape.eset,ci,cii,lo)
 						end 
 					end
 				else
 					for j0 = trlen-n+1:trlen	
 						ci = tr[j0]
-						push!(tape.liveVar[ci],p)
+						push_live_var(tape.liveVar,ci,p)
+						push_edge(tape.eset,ci,p,lo)
 					end
 				end
 			end
 
 			#creating
-			if(U_OP_START<=oc<=U_OP_END)
+			if (U_OP_START<=oc<=U_OP_END)  #for 1-ary operator
 				# @show OP[oc],d
 				d = S_TO_DIFF_FLAG[OP[oc]]
 				if(d[1]==false) #not zero
 					ci = tr[trlen]
-					push!(tape.liveVar[ci],ci)
+					push_live_var(tape.liveVar,ci,ci)
+					push_diag(tape.eset,ci)
 				end
 			elseif (OP[oc] == :*) #special case for *
 				for j0=trlen-n+1:trlen  #construct live var set for each children
 					ci = tr[j0]
-					for j1=trlen-n+1:trlen
-						if(j0!=j1)
-							cii = tr[j1]
-							# @show OP[oc],ci,cii
-							push!(tape.liveVar[ci],cii)
-						end
+					for j1=j0+1:trlen
+						cii = tr[j1]
+						assert(ci<cii)
+						# @show OP[oc],ci,cii
+						push_live_var(tape.liveVar,ci,cii)
+						push_live_var(tape.liveVar,cii,ci)
+						push_edge(tape.eset,ci,cii,lo)
 					end
 				end
-			else
+			elseif (OP[oc] ==:+ || OP[oc] ==:-)
+				#skil no second order
+			else #+ has no edges created
+				d = S_TO_DIFF_FLAG[OP[oc]]
 				ri = tr[trlen]
 				li = tr[trlen-1]
-				d = S_TO_DIFF_FLAG[OP[oc]]
+				assert(li<ri)
+				# @show OP[oc],d
 				if(d[1] == false)
-					push!(tape.liveVar[li],li)
+					# push!(tape.liveVar[li],li=>0.0)
+					push_live_var(tape.liveVar,li,li)
+					push_diag(tape.eset,li) #dxx
 				end
 				if(d[2] == false)
-					push!(tape.liveVar[ri],li)
-					push!(tape.liveVar[li],ri) #even though weight are same, create anyway.
+					push_live_var(tape.liveVar,li,ri)
+					push_live_var(tape.liveVar,ri,li)
+					push_edge(tape.eset,li,ri,lo) 
 				end
 				if(d[3] == false)
-					push!(tape.liveVar[ri],ri)
+					push_live_var(tape.liveVar,ri,ri)
+					push_diag(tape.eset,ri)
 				end
 			end
 			trlen -= n
@@ -153,90 +186,64 @@ function hess_struct{I,V}(tape::Tape{I},eset::EdgeSet{I,V})
 	# @show vidx
 	for i in vidx
 		# @show i
-		lvi = tape.liveVar[i]
-		# @show lvi
-		for j in lvi
+		eseti = tape.eset[i]
+		# @show eseti
+		for j in keys(eseti)
 			# @show j
 			ii = tt[i+1]
 			if tt[j] == TYPE_V
 				jj = tt[j+1]
 				if(!haskey(eset,ii))
-					eset[ii] = Dict{I,V}()
+					eset[ii] = Set{I}()
 				end
-				# @show i,j
 				# @show ii,jj
-				if(ii>=jj)  #only the lower trangular
-					eset[ii][jj] = 0.0
-				end
+				push!(eset[ii],jj)
 			end
 		end
 	end	
 end
 
-function make_edge{I,V}(eset::EdgeSet{I,V},i1::I,i2::I,w::V)
-	assert(i1>=i2)
-	if(haskey(eset[i1],i2))
-		eset[i1][i2] += w
-	else
-		eset[i1][i2] = w
-	end
-end
 
-function reverse_pass_2ord{I,V}(tape::Tape{I},imm::Array{V,1},tr::Array{I,1},eset::EdgeSet{I,V})
+function reverse_pass_2ord{I,V}(tape::Tape{I,V},imm::Array{V,1},eset::EdgeSet{I,V})
+	tr = tape.tr
 	tt = tape.tt
 	idx = length(tt)
 	immlen = tt.imm2ord
+	vidx = Set{I}()
+	assert(length(imm) == immlen)
 
-	adjs = Array{V,1}()
-	sizehint!(adjs, tape.maxoperands+20)  #the acutally size should be (depth_of_tree - current_depth + maxoperands)
-	push!(adjs,one(V))  #init value 
+	adjs = Vector{V}(tape.maxoperands)
+	adjlen = 1
+	adjs[1] = one(V)
 
 	@inbounds while(idx > 0)
-		i = idx
 		ntype = tt[idx]
 		idx -= 1
-		adj = pop!(adjs)
+		adj = adjs[adjlen]
+		adjlen -= 1
+
 		if(ntype == TYPE_P)
 			idx -= 2
-			delete!(eset,i)
 		elseif(ntype == TYPE_V)
 			idx -= 2
+			push!(vidx,tt[idx+1])
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
-			idx -= 3 #skip TYPE_O 
-			trlen -= n
-			#pushing	
-			set = eset[i] #Dict{I,V} 
-			state = start(set)
-			while !done(set,state)
-				(p,w) = next(set,state)
+			idx -= 1
+			oc = tt[idx]
+			idx -= 2
+
+			#pushing
+			i = idx + 1 #current node idx
+			lvi = tape.liveVar[i] #live var set at i
+
+			for p in lvi  #for each 
 				if(i==p)
-					for tr_i = trlen-n+1:trlen
-						n1 = tr[tr_i]
-						h1 = imm[tr_i]
-						assert(isempty(eset[n1]))
-						make_edge(eset,n1,n1,w*h1*h1)
-						for tr_ii=tr_i+1:trlen
-							n2 = tr[tr_ii]
-							h2 = imm[tr_ii]
-							assert(isempty(eset[n2]))
-							assert(n2>n1)
-							make_edge(eset,n2,n1,w*h1*h2)
-						end
-					end
+
 				else
-					for tr_i = trlen-n+1:trlen
-						n1 = tr[tr_i]
-						h1 = imm[tr_i]
-						if(n1==p) #the circle case
-							make_edge(eset,p,p,2*w*h1)
-						else
-							make_edge(eset,n1,p,w*h1)
-						end
-					end
+					
 				end
 			end
-			delete!(eset,i)	
 
 			#creating
 			if n==1
@@ -524,11 +531,11 @@ end
 
 
 #Interface function
-function hess_structure{I,V}(tape::Tape{I}, eset::EdgeSet{I,V})
-	hess_struct(tape,eset)
+function hess_structure_lower{I,V}(tape::Tape{I,V}, eset::Dict{I,Set{I}})
+	hess_struct(tape,eset,true)
 end
 
-function hess_reverse{I,V}(tape::Tape{I},vvals::Vector{V},pvals::Vector{V}, eset::EdgeSet{I,V})
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, eset::EdgeSet{I,V})
 	imm = Vector{V}(tape.imm2ord)
 	forward_pass_2ord(tape,vvals,pvals,imm)
 	reverse_pass_2ord(tape,imm,eset)

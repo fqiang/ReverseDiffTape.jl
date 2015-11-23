@@ -2,7 +2,6 @@
 #type alias
 typealias OP_TYPE Int
 
-
 #the AD types below
 const TYPE_V = 1	#variable node
 const TYPE_P = 2	#param node
@@ -61,9 +60,10 @@ end
 
 ##############################################################################
 
-type Tape{I<:Int}
+type Tape{I,V}
 	tt::Array{I,1}
 	tr::Array{I,1}
+	eset::Dict{I,Dict{I,V}}
 	liveVar::Dict{I,Set{I}}
 	nvar::I
 	nvnode::I
@@ -72,23 +72,25 @@ type Tape{I<:Int}
 	imm2ord::I
 	
 	function Tape()
-		return new(Array{I,1}(),Array{I,1}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		return new(Array{I,1}(),Array{I,1}(),Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 	end
 
 	function Tape(data::Array{I,1})
-		this = new(data,Array{I,1}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		this = new(data,Array{I,1}(),Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
 		analysize_tape(this)
 		return this
 	end
 end
 
-function analysize_tape{I}(tape::Tape{I})
+function analysize_tape{I,V}(tape::Tape{I,V})
 	tt = tape.tt
 	idx = one(I)
 	istk = Vector{I}()
 	iset = Set{I}()
 	@inbounds while(idx <= length(tt))
 		# @show idx
+		eset[idx] = Dict{I,V}()
+		liveVar[idx] = Set{I}()
 		ntype = tt[idx]
 		idx += 1
 		if(ntype == TYPE_P)
