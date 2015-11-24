@@ -26,7 +26,7 @@ facts("Reverse gradient sin(a)*cos(b) ") do
 	b = AD_V(x,2.2)
 	c=sin(a)*cos(b)
 	tt = tapeBuilder(c.data)
-	grad = Array{VV_TYPE,1}(length(x))
+	grad = Array{Float64,1}(length(x))
 	grad_reverse(tt,x,p,grad)
 	I = Array{IDX_TYPE,1}()
 	grad_structure(tt,I)
@@ -43,7 +43,7 @@ facts("Reverse gradient a^3") do
 	b = AD_P(p,3)
 	c = a^b
 	tt = tapeBuilder(c.data)
-	grad = Array{VV_TYPE,1}(length(x))
+	grad = Array{Float64,1}(length(x))
 	grad_reverse(tt,x,p,grad)
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> 3*1.1^2
@@ -58,7 +58,7 @@ facts("Reverse gradient x1*x2*x3*x4") do
 	x4 = AD_V(x,4.4)
 	c = x1*x2*x3*x4
 	tt = tapeBuilder(c.data)
-	grad = Array{VV_TYPE,1}(length(x))
+	grad = Array{Float64,1}(length(x))
 	grad_reverse(tt,x,p,grad)
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> 2.2*3.3*4.4
@@ -76,7 +76,7 @@ facts("Reverse gradient sin(x1*x2*x3*x4)") do
 	x4 = AD_V(x,4.4)
 	c = sin(x1*x2*x3*x4)
 	tt = tapeBuilder(c.data)
-	grad = Array{VV_TYPE,1}(length(x))
+	grad = Array{Float64,1}(length(x))
 	grad_reverse(tt,x,p,grad)
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> cos(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
@@ -95,7 +95,7 @@ facts("Reverse gradient cos(x1*x2*x3*x4)") do
 	x4 = AD_V(x,4.4)
 	c = cos(x1*x2*x3*x4)
 	tt = tapeBuilder(c.data)
-	grad = Array{VV_TYPE,1}(length(x))
+	grad = Array{Float64,1}(length(x))
 	grad_reverse(tt,x,p,grad)
 	@fact length(grad) --> length(x)
 	@fact grad[1] --> -sin(1.1*2.2*3.3*4.4)*2.2*3.3*4.4
@@ -113,12 +113,22 @@ facts("Hessian EP algorithm x1^2") do
 	p2 = AD_P(p,2)
 	c = x1^p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
+	eset = Dict{Int,Set{Int}}()
+	h = EdgeSet{Int,Float64}()
+	hess_structure_lower(tt,eset)
+	hess_reverse(tt,x,p,h)
 	@fact length(eset) --> 1
-	@fact haskey(eset,h11) --> true
-	@fact eset[h11] --> 2
+	@fact haskey(eset,1) --> true
+	@fact length(eset[1]) --> 1
+	@fact h[1][1] --> 2.0
+end
+
+function count(eset::Dict{Int,Set{Int}})
+	c = 0
+	for i in eset
+		c+=length(i[2])
+	end
+	return c
 end
 
 
@@ -130,21 +140,16 @@ facts("Hessian EP algorithm x1^2*x2^2") do
 	p2 = AD_P(p,2)
 	c = x1^p2*x2^p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	h12 = Edge(tt,1,2)
-	h21 = Edge(tt,2,1)
-	h22 = Edge(tt,2,2)
-	@fact length(eset) --> 3
-	@fact haskey(eset,h11) --> true
-	@fact haskey(eset,h12) --> true
-	@fact haskey(eset,h21) --> true
-	@fact haskey(eset,h22) --> true
-	@fact eset[h11] --> 2.2*2.2*2
-	@fact eset[h12] --> 2*1.1*2*2.2
-	@fact eset[h21] --> 2*1.1*2*2.2
-	@fact eset[h22] --> 1.1*1.1*2 
+
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{Int,Float64}()
+	hess_reverse(tt,x,p,h)
+	
+	@fact count(eset) --> 3
+	@fact h[1][1] --> 2.2*2.2*2
+	@fact h[2][1] --> 2*1.1*2*2.2
+	@fact h[2][2] --> 1.1*1.1*2 
 end
 
 facts("Hessian EP algorithm sin(x1)") do
@@ -153,12 +158,12 @@ facts("Hessian EP algorithm sin(x1)") do
 	x1 = AD_V(x,1.1)
 	c = sin(x1)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 1
-	@fact haskey(eset,h11) --> true
-	@fact eset[h11] --> -sin(1.1) 
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 1
+	@fact h[1][1] --> -sin(1.1) 
 end
 
 
@@ -168,12 +173,12 @@ facts("Hessian EP algorithm cos(x1)") do
 	x1 = AD_V(x,1.1)
 	c = cos(x1)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 1
-	@fact haskey(eset,h11) --> true
-	@fact eset[h11] --> -cos(1.1) 
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 1
+	@fact h[1][1] --> -cos(1.1) 
 end
 
 facts("Hessian EP algorithm x1*x2") do
@@ -183,11 +188,12 @@ facts("Hessian EP algorithm x1*x2") do
 	x2 = AD_V(x,2.2)
 	c = x1*x2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h12 = Edge(tt,1,2)
-	@fact length(eset) --> 1
-	@fact eset[h12] --> 1
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 1
+	@fact h[2][1] --> 1.0
 end
 
 
@@ -198,17 +204,14 @@ facts("Hessian EP algorithm sin(x1*x2)") do
 	x2 = AD_V(x,2.2)
 	c = sin(x1*x2)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	h12 = Edge(tt,1,2)
-	h21 = Edge(tt,2,1)
-	h22 = Edge(tt,2,2)
-	@fact length(eset) --> 3
-	@fact eset[h12] --> cos(1.1*2.2) - 1.1*2.2*sin(1.1*2.2)
-	@fact eset[h11] --> -2.2^2*sin(1.1*2.2)
-	@fact eset[h21] --> cos(1.1*2.2) - 1.1*2.2*sin(1.1*2.2)
-	@fact eset[h22] --> -1.1^2*sin(1.1*2.2)
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 3
+	@fact h[2][1] --> cos(1.1*2.2) - 1.1*2.2*sin(1.1*2.2)
+	@fact h[1][1] --> -2.2^2*sin(1.1*2.2)
+	@fact h[2][2] --> -1.1^2*sin(1.1*2.2)
 end
 
 facts("Hessian EP algorithm cos(sin(x1))") do
@@ -217,26 +220,28 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 	x1 = AD_V(x,1.1)
 	c = cos(sin(x1))
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 1
-	@fact eset[h11] --> sin(sin(1.1))*sin(1.1) - cos(sin(1.1))*(cos(1.1)^2)
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 1
+	@fact h[1][1] --> sin(sin(1.1))*sin(1.1) - cos(sin(1.1))*(cos(1.1)^2)
 end
 
 
-facts("Hessian EP algorithm cos(sin(x1))") do
+facts("Hessian EP algorithm cos(sin(x1*x2))") do
 	p = Array{Float64,1}()
 	x = Array{Float64,1}()
 	x1 = AD_V(x,1.1)
 	x2 = AD_V(x,2.2)
 	c = cos(sin(x1*x2))
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 3
-	@fact eset[h11] --> roughly(2.2^2*sin(sin(1.1*2.2))*sin(1.1*2.2)-2.2^2*cos(sin(1.1*2.2))*cos(1.1*2.2)^2)
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 3
+	@fact h[1][1] --> roughly(2.2^2*sin(sin(1.1*2.2))*sin(1.1*2.2)-2.2^2*cos(sin(1.1*2.2))*cos(1.1*2.2)^2)
 end
 
 facts("Hessian EP algorithm x1*x1") do
@@ -245,11 +250,12 @@ facts("Hessian EP algorithm x1*x1") do
 	x1 = AD_V(x,1.1)
 	c = x1*x1
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 1
-	@fact eset[h11] --> 2
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 1
+	@fact h[1][1] --> 2.0
 end
 
 facts("Hessian EP algorithm cos(x1*x2)") do
@@ -259,21 +265,14 @@ facts("Hessian EP algorithm cos(x1*x2)") do
 	x2 = AD_V(x,2.2)
 	c = cos(x1*x2)
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	h12 = Edge(tt,1,2)
-	h21 = Edge(tt,2,1)
-	h22 = Edge(tt,2,2)
-	@fact length(eset) --> 3
-	@fact haskey(eset,h11) --> true
-	@fact haskey(eset,h12) --> true
-	@fact haskey(eset,h21) --> true
-	@fact haskey(eset,h22) --> true
-	@fact eset[h11] --> -cos(1.1*2.2)*2.2*2.2
-	@fact eset[h12] --> -(sin(1.1*2.2)+cos(1.1*2.2)*1.1*2.2)
-	@fact eset[h21] --> -(sin(1.1*2.2)+cos(1.1*2.2)*1.1*2.2)
-	@fact eset[h22] --> -cos(1.1*2.2)*1.1*1.1 
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 3
+	@fact h[1][1] --> -cos(1.1*2.2)*2.2*2.2
+	@fact h[2][1] --> -(sin(1.1*2.2)+cos(1.1*2.2)*1.1*2.2)
+	@fact h[2][2] -->  -cos(1.1*2.2)*1.1*1.1 
 end
 
 
@@ -285,21 +284,14 @@ facts("Hessian EP algorithm x1*x1*x2*x2") do
 	p2 = AD_P(p,2)
 	c = x1*x1*x2*x2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	h12 = Edge(tt,1,2)
-	h21 = Edge(tt,2,1)
-	h22 = Edge(tt,2,2)
-	@fact length(eset) --> 3
-	@fact haskey(eset,h11) --> true
-	@fact haskey(eset,h12) --> true
-	@fact haskey(eset,h21) --> true
-	@fact haskey(eset,h22) --> true
-	@fact eset[h11] --> 2.2*2.2*2
-	@fact eset[h12] --> 2*1.1*2*2.2
-	@fact eset[h21] --> 2*1.1*2*2.2
-	@fact eset[h22] --> 1.1*1.1*2 
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+	@fact count(eset) --> 3
+	@fact h[1][1] --> 2.2*2.2*2
+	@fact h[2][1] --> 2*1.1*2*2.2
+	@fact h[2][2] --> 1.1*1.1*2 
 end
 
 facts("Hessian EP algorithm x1*x1*x1") do
@@ -309,12 +301,13 @@ facts("Hessian EP algorithm x1*x1*x1") do
 	p2 = AD_P(p,2)
 	c = x1*x1*x1
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	@fact length(eset) --> 1
-	@fact haskey(eset,h11) --> true
-	@fact eset[h11] --> 6*1.1
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+
+	@fact count(eset) --> 1
+	@fact h[1][1] --> 6*1.1
 end
 
 facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
@@ -323,22 +316,18 @@ facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
 	x1 = AD_V(x, 1.1)
 	x2 = AD_V(x, 2.2)
 	x3 = AD_V(x, 3.3)
-	p1 = AD_P(p, 1)
-	p2 = AD_P(p, 2)
-	c = sin(x1)+cos(x2^p2) * p1 - x3*p2
+	# p1 = AD_P(p, 1.0)
+	p2 = AD_P(p, 2.0)
+	# c = sin(x1)+cos(x2^p2) * p1 - x3*p2
+	c = sin(x1)+cos(x2^p2) - x3*p2
 	tt = tapeBuilder(c.data)
-	eset = EdgeSet{IDX_TYPE,VV_TYPE}()
-	hess_reverse(tt,x,p,eset)
-	h11 = Edge(tt,1,1)
-	h22 = Edge(tt,2,2)
-	nzeset = Set{Edge}()
-	hess_structure(tt,nzeset)
-	@fact length(nzeset) --> 2
-	@fact in(h11,nzeset)  --> true
-	@fact in(h22,nzeset)  --> true
-	@fact length(eset) --> 2
-	@fact eset[h11] --> -sin(1.1)
-	@fact eset[h22] --> -2*sin(2.2^2)-4*2.2^2*cos(2.2^2)
-	# print(eset)
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt,eset)
+	h = EdgeSet{IDX_TYPE,Float64}()
+	hess_reverse(tt,x,p,h)
+
+	@fact count(eset) --> 2
+	@fact h[1][1] --> -sin(1.1)
+	@fact h[2][2] --> -2*sin(2.2^2)-4*2.2^2*cos(2.2^2)
 end
 FactCheck.exitstatus()

@@ -4,6 +4,183 @@ typealias IDX_TYPE Int
 
 typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
+@inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
+	for i=1:n
+		@inbounds dest[i+d_offset] = src[i+s_offset]
+	end
+end
+
+@inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
+	# @show i1
+	assert(haskey(eset,i1))
+	eset[i1][i1] = 0.0
+end
+
+@inline function push_edge{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
+	# @show i1,i2
+	assert(i1!=i2)
+	# @show "push_edge", i1,i2
+	if i1<i2
+		assert(haskey(eset,i2))
+		eset[i2][i1] = 0.0
+	else
+		assert(haskey(eset,i1))
+		eset[i1][i2] = 0.0
+	end
+end
+
+@inline function push_live_var{I}(liveVar::Dict{I,Set{I}},i1::I,i2::I)
+	assert(haskey(liveVar,i1))
+	push!(liveVar[i1],i2)
+end
+
+function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
+	tt = tape.tt
+	tr = tape.tr
+	idx = length(tt)
+	trlen = length(tr)
+	vidx = Set{I}()
+	# @show tape.nnode-1, length(tr)
+	assert(tape.nnode-1 == length(tr))
+	# assert(isempty(eset))
+	
+	while (idx > 0)
+		ntype = tt[idx]
+		idx -= 1
+		if(ntype == TYPE_P)
+			idx -= 2
+		elseif(ntype == TYPE_V)
+			idx -= 2
+			push!(vidx,idx+1)
+		elseif(ntype == TYPE_O)
+			n = tt[idx]
+			idx -= 1
+			oc = tt[idx]
+			idx -= 2
+
+			#pushing
+			i = idx + 1
+			lvi = tape.liveVar[i] #live var set at i
+			
+			for p in lvi  #for each 
+				if(i==p)
+					for j0=trlen-n+1:trlen  #construct live var set for each children
+						ci = tr[j0] #child of i
+						push_live_var(tape.liveVar,ci,ci)
+						push_diag(tape.eset,ci)
+						for j1=j0+1:trlen
+							cii = tr[j1] #child of i
+							assert(ci<cii) #ci always smaller since tr building
+							push_live_var(tape.liveVar,ci,cii)
+							push_live_var(tape.liveVar,cii,ci)
+							push_edge(tape.eset,ci,cii)
+						end 
+					end
+				else
+					for j0 = trlen-n+1:trlen	
+						ci = tr[j0]
+						push_live_var(tape.liveVar,ci,p)
+						push_live_var(tape.liveVar,p,ci)
+						push_edge(tape.eset,ci,p)
+					end
+				end
+			end
+
+			#creating
+			if (n==1)  #for 1-ary operator
+				# @show OP[oc],d
+				ci = tr[trlen]
+				push_live_var(tape.liveVar,ci,ci)
+				push_diag(tape.eset,ci)
+			elseif (OP[oc] ==:+ || OP[oc] ==:-)
+				#zeros
+			elseif (OP[oc] == :*) #special case for *
+				for j0=trlen-n+1:trlen  #construct live var set for each children
+					ci = tr[j0]
+					for j1=j0+1:trlen
+						cii = tr[j1]
+						assert(ci<cii)
+						# @show OP[oc],ci,cii
+						push_live_var(tape.liveVar,ci,cii)
+						push_live_var(tape.liveVar,cii,ci)
+						push_edge(tape.eset,ci,cii)
+					end
+				end
+			else #binary
+				ri = tr[trlen]
+				li = tr[trlen-1]
+				assert(li<ri)
+			
+				push_live_var(tape.liveVar,li,li)
+				push_diag(tape.eset,li) #dxx
+				
+				push_live_var(tape.liveVar,li,ri)
+				push_live_var(tape.liveVar,ri,li)
+				push_edge(tape.eset,li,ri) #dxy
+				
+				push_live_var(tape.liveVar,ri,ri)
+				push_diag(tape.eset,ri) #dyy
+			end
+			trlen -= n
+		end
+	end
+	# @show tape.liveVar
+	# @show tape.eset
+
+	# @show vidx
+	for i in vidx
+		# @show i
+		eseti = tape.eset[i]
+		# @show eseti
+		for j in keys(eseti)
+			# @show j
+			ii = tt[i+1]
+			if tt[j] == TYPE_V
+				jj = tt[j+1]
+				# @show ii,jj
+				if(lo)
+					if(!haskey(eset,ii))
+						eset[ii] = Set{I}()
+					end
+					push!(eset[ii],jj)
+				else
+					if(!haskey(eset,jj))
+						eset[jj] = Set{I}()
+					end
+					push!(eset[jj],ii)
+				end
+			end
+		end
+	end	
+end
+
+@inline function getw{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
+	# @show "in w",i1,i2
+	if(i1>=i2)
+		assert(haskey(eset,i1))
+		assert(haskey(eset[i1],i2))
+		return eset[i1][i2]
+	else
+		assert(haskey(eset,i2))
+		assert(haskey(eset[i2],i1))
+		return eset[i2][i1]
+	end
+end
+
+@inline function incr{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,w::V)
+	# @show "incr",i1,i2, w
+	if i1>=i2 
+		assert(haskey(eset,i1))
+		assert(haskey(eset[i1],i2))
+		eset[i1][i2]+=w 
+	else
+		assert(haskey(eset,i2))
+		assert(haskey(eset[i2],i1))
+		eset[i2][i1]+=w
+	end
+end
+
+
 function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1}, imm::Array{V,1})
 	tt = tape.tt
 	idx = one(I)
@@ -49,484 +226,246 @@ function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
 		# @show stklen
 		# println("++++++++++++++++++++++++++++++++++++")
 	end
+	# @show tape.imm2ord,immlen
+	# assert(tape.imm2ord>=immlen)
 	tape.imm2ord = immlen
 	# @show stklen
+	resize!(imm,immlen)
 	return stk[1]
 end
 
 
-@inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
-	for i=1:n
-		@inbounds dest[i+d_offset] = src[i+s_offset]
-	end
-end
-
-@inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
-	# @show i1
-	eset[i1][i1] = 0.0
-end
-
-@inline function push_edge{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,lo::Bool)
-	# @show i1,i2,lo
-	assert(i1!=i2)
-	if(lo) #lower
-		i1<i2? eset[i2][i1] = 0.0:eset[i2][i1] = 0.0
-	else  #upper
-		i1<i2? eset[i1][i2] = 0.0:eset[i1][i2] = 0.0
-	end
-end
-
-@inline function push_live_var{I}(liveVar::Dict{I,Set{I}},i1::I,i2::I)
-	push!(liveVar[i1],i2)
-end
-
-function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
-	tt = tape.tt
+function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, eset::Dict{I,Dict{I,V}})
 	tr = tape.tr
+	tt = tape.tt
 	idx = length(tt)
 	trlen = length(tr)
+	immlen = tape.imm2ord
+	assert(length(imm) == immlen)
+
 	vidx = Set{I}()
-	# @show tape.nnode-1, length(tr)
-	assert(tape.nnode-1 == length(tr))
-	# assert(isempty(eset))
-	
-	while (idx > 0)
+
+	adjs = Vector{V}(tape.maxoperands+20)
+	adjlen = 1
+	adjs[1] = one(V)
+
+	@inbounds while(idx > 0)
+		# println("++++++++++++++++++++++++++++++++++++")
+		# @show idx
+		# @show trlen,immlen, adjlen
 		ntype = tt[idx]
 		idx -= 1
+		adj = adjs[adjlen]
+		adjlen -= 1
+		# @show adj
+
 		if(ntype == TYPE_P)
 			idx -= 2
 		elseif(ntype == TYPE_V)
 			idx -= 2
-			push!(vidx,idx+1)
+			push!(vidx, idx+1)
+			# @show idx, vidx
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 1
 			oc = tt[idx]
 			idx -= 2
 
-			#pushing
-			i = idx + 1
-			lvi = tape.liveVar[i] #live var set at i
-			# for j=trlen-n+1:trlen  #construct live var set for each children
-			# 	ci = tr[j]  #child of i
-			# 	tape.liveVar[ci] = Dict{I,V}() 
-			# end
+			# @show OP[oc],n
+			# @show tr
 
-			for p in lvi  #for each 
+			#pushing
+			i = idx + 1 #current node idx
+			lvi = tape.liveVar[i] #live var set at i
+
+			for p in lvi  #for each upper live vars
+				w = getw(tape.eset,i,p)
 				if(i==p)
-					for j0=trlen-n+1:trlen  #construct live var set for each children
-						ci = tr[j0] #child of i
-						push_live_var(tape.liveVar,ci,ci)
-						push_diag(tape.eset,ci)
-						for j1=j0+1:trlen
-							cii = tr[j1] #child of i
-							assert(ci<cii) #ci always smaller since tr building
-							push_live_var(tape.liveVar,ci,cii)
-							push_live_var(tape.liveVar,cii,ci)
-							push_edge(tape.eset,ci,cii,lo)
-						end 
+					if(n==1) #1-ary operator
+						incr(tape.eset,tr[trlen],tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
+					else  #2 or more
+						if(OP[oc]==:+ )
+							for k=trlen-n+1:trlen
+								incr(tape.eset,tr[k],tr[k],w)
+								j0 = j + 1
+								for k0=k+1:trlen
+									incr(tape.eset,tr[k],tr[k0],w)
+									j0 += 1
+								end
+								j += 1
+							end
+						elseif(OP[oc] ==:-)
+							l = tr[trlen-1]
+							r = tr[trlen]
+							incr(tape.eset,l,l,w)
+							incr(tape.eset,r,r,w)
+							incr(tape.eset,l,r,-1.0*w)
+						elseif(OP[oc] == :*)
+							j = immlen - round(I,n+n*(n-1)/2)+1
+							for k=trlen-n+1:trlen
+								incr(tape.eset,tr[k],tr[k],imm[j]*imm[j]*w)
+								j0 = j + 1
+								for k0=k+1:trlen
+									incr(tape.eset,tr[k],tr[k0],imm[j]*imm[j0]*w)
+									j0 += 1
+								end
+								j += 1
+							end
+						else #binary
+							l = tr[trlen-1]
+							r = tr[trlen]
+							dl = imm[immlen-4]
+							dr = imm[immlen-3]
+							incr(tape.eset,l,l,dl*dl*w)
+							incr(tape.eset,r,r,dr*dr*w)
+							incr(tape.eset,l,r,dl*dr*w)
+						end
 					end
 				else
-					for j0 = trlen-n+1:trlen	
-						ci = tr[j0]
-						push_live_var(tape.liveVar,ci,p)
-						push_edge(tape.eset,ci,p,lo)
+					if(n==1)
+						# @show trlen,immlen
+						# @show imm
+						# @show tr
+						# @show imm[immlen-1], tr[trlen], w
+						t = imm[immlen-1]*imm[immlen-1]*w
+						# @show t
+						# @show tape.eset
+						# @show tape.eset[tr[trlen]]
+						incr(tape.eset,tr[trlen],trlen[trlen],t)
+					else
+						if(OP[oc]==:+)
+							for k=trlen-n+1:trlen
+								incr(tape.eset,tr[k],p,w)
+								assert(p!=tr[k])
+							end
+						elseif(OP[oc]==:-)
+							l = tr[trlen-1]
+							r = tr[trlen]
+							incr(tape.eset,l,p,w)
+							incr(tape.eset,r,p,-1.0*w)
+							assert(p!=l && p!=r)
+						elseif(OP[oc] == :*)
+							j = immlen - round(I,n+n*(n-1)/2)+1
+							for k=trlen -n+1:trlen
+								incr(tape.eset,tr[k],p,imm[j]*w)
+								assert(p!=tr[k])
+							end
+						else #binary
+							l = tr[trlen-1]
+							r = tr[trlen]
+							dl = imm[immlen-4]
+							dr = imm[immlen-3]
+							incr(tape.eset,l,p,dl*w)
+							incr(tape.eset,r,p,dr*w)
+							assert(p!=l && p!=r)
+						end
 					end
+				end
+			end #end pushing
+
+			#creating
+			if n==1
+				incr(tape.eset,tr[trlen],tr[trlen],adj*imm[immlen])
+			else
+				if(OP[oc] == :+ || OP[oc] ==:-)
+					#zero
+				elseif(OP[oc]==:*)
+					j = immlen - round(I,n*(n-1)/2) + 1
+					for k=trlen-n+1:trlen
+						for k0=k+1:trlen
+							incr(tape.eset,tr[k],tr[k0],adj*imm[j])
+							j+=1
+						end
+					end
+				else #binary
+					l = tr[trlen-1]
+					r = tr[trlen]
+					dll = imm[immlen-2]
+					dlr = imm[immlen-1]
+					drr = imm[immlen]
+					incr(tape.eset,l,l,adj*dll)
+					incr(tape.eset,l,r,adj*dlr)
+					incr(tape.eset,r,r,adj*drr)
 				end
 			end
 
-			#creating
-			if (U_OP_START<=oc<=U_OP_END)  #for 1-ary operator
-				# @show OP[oc],d
-				d = S_TO_DIFF_FLAG[OP[oc]]
-				if(d[1]==false) #not zero
-					ci = tr[trlen]
-					push_live_var(tape.liveVar,ci,ci)
-					push_diag(tape.eset,ci)
-				end
-			elseif (OP[oc] == :*) #special case for *
-				for j0=trlen-n+1:trlen  #construct live var set for each children
-					ci = tr[j0]
-					for j1=j0+1:trlen
-						cii = tr[j1]
-						assert(ci<cii)
-						# @show OP[oc],ci,cii
-						push_live_var(tape.liveVar,ci,cii)
-						push_live_var(tape.liveVar,cii,ci)
-						push_edge(tape.eset,ci,cii,lo)
+			# @show adjlen
+			#adj
+			imm_counter = zero(I)
+			if n==1
+				adjlen += 1
+				adjs[adjlen] = imm[immlen-1]*adj
+				imm_counter = 2
+			else
+				if OP[oc]==:+ 
+					for m=1:n
+						adjlen += 1
+						adjs[adjlen] = adj
 					end
-				end
-			elseif (OP[oc] ==:+ || OP[oc] ==:-)
-				#skil no second order
-			else #+ has no edges created
-				d = S_TO_DIFF_FLAG[OP[oc]]
-				ri = tr[trlen]
-				li = tr[trlen-1]
-				assert(li<ri)
-				# @show OP[oc],d
-				if(d[1] == false)
-					# push!(tape.liveVar[li],li=>0.0)
-					push_live_var(tape.liveVar,li,li)
-					push_diag(tape.eset,li) #dxx
-				end
-				if(d[2] == false)
-					push_live_var(tape.liveVar,li,ri)
-					push_live_var(tape.liveVar,ri,li)
-					push_edge(tape.eset,li,ri,lo) 
-				end
-				if(d[3] == false)
-					push_live_var(tape.liveVar,ri,ri)
-					push_diag(tape.eset,ri)
+				elseif OP[oc] ==:-
+					adjlen += 1
+					adjs[adjlen] = adj
+					adjlen += 1
+					adjs[adjlen] = -1.0*adj
+				elseif OP[oc] ==:*
+					j=immlen-round(I,n+n*(n-1)/2)+1
+					# @show immlen,round(I,n+n*(n-1)/2),j
+					for m=1:n
+						# @show adjlen, j, m
+						adjlen += 1
+						adjs[adjlen] = imm[j]*adj
+						j+=1
+					end
+					# @show immlen, adjlen
+					imm_counter = round(I,n+n*(n-1)/2)
+				else
+					adjlen += 1
+					adjs[adjlen] = imm[immlen-4]*adj
+					adjlen += 1
+					adjs[adjlen] = imm[immlen-3]*adj
+					imm_counter = 5
 				end
 			end
+
+			# @show OP[oc],n
+			# @show trlen
+			# @show immlen,imm_counter
+			# @show tr
+			# @show imm
+
+
+			#update
 			trlen -= n
-		end
-	end
+			immlen -= imm_counter
+		end #end TYPE_O
+		# println("++++++++++++++++++++++++++++++++++++")
+	end  #end while
+
+	# @show tape.eset
 
 	# @show vidx
 	for i in vidx
 		# @show i
 		eseti = tape.eset[i]
 		# @show eseti
-		for j in keys(eseti)
+		for (j,w) in eseti
 			# @show j
 			ii = tt[i+1]
 			if tt[j] == TYPE_V
 				jj = tt[j+1]
 				if(!haskey(eset,ii))
-					eset[ii] = Set{I}()
+					eset[ii] = Dict{I,V}()
 				end
-				# @show ii,jj
-				push!(eset[ii],jj)
+				if(i!=j && ii==jj)
+					haskey(eset[ii],jj)?eset[ii][jj] += 2.0*w*factor : eset[ii][jj] = 2.0*w*factor
+				else
+					haskey(eset[ii],jj)?eset[ii][jj] += w*factor: eset[ii][jj] = w*factor
+				end
+				# @show ii,jj, eset[ii][jj]
 			end
 		end
 	end	
 end
-
-
-function reverse_pass_2ord{I,V}(tape::Tape{I,V},imm::Array{V,1},eset::EdgeSet{I,V})
-	tr = tape.tr
-	tt = tape.tt
-	idx = length(tt)
-	immlen = tt.imm2ord
-	vidx = Set{I}()
-	assert(length(imm) == immlen)
-
-	adjs = Vector{V}(tape.maxoperands)
-	adjlen = 1
-	adjs[1] = one(V)
-
-	@inbounds while(idx > 0)
-		ntype = tt[idx]
-		idx -= 1
-		adj = adjs[adjlen]
-		adjlen -= 1
-
-		if(ntype == TYPE_P)
-			idx -= 2
-		elseif(ntype == TYPE_V)
-			idx -= 2
-			push!(vidx,tt[idx+1])
-		elseif(ntype == TYPE_O)
-			n = tt[idx]
-			idx -= 1
-			oc = tt[idx]
-			idx -= 2
-
-			#pushing
-			i = idx + 1 #current node idx
-			lvi = tape.liveVar[i] #live var set at i
-
-			for p in lvi  #for each 
-				if(i==p)
-
-				else
-					
-				end
-			end
-
-			#creating
-			if n==1
-				make_edge(eset,)
-			end
-		# 	#creating
-		# if(OP[oc] == :+ || OP[oc] == :-)
-		# 	#do nothing for linear operator
-		# elseif(OP[oc] == :*)
-		# 	e1 = createEdge(tt,lidx,ridx)
-		# 	w1 = adj*hlr
-		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 	# eset[e1] += (adj*hlr)
-		# elseif(OP[oc] == :/)
-		# 	e1 = createEdge(tt,lidx,ridx)
-		# 	w1 = adj*hlr
-		# 	e3 = createEdge(tt,ridx,ridx)
-		# 	w3 = adj*hrr
-		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 	aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-		# 	# eset[e1] += (adj*hlr)
-		# 	# eset[e3] += (adj*hrr)
-		# elseif(OP[oc] == :^)
-		# 	e1 = createEdge(tt,lidx,ridx)
-		# 	w1 = adj*hlr
-		# 	e2 = createEdge(tt,lidx,lidx)
-		# 	w2 = adj*hll
-		# 	e3 = createEdge(tt,ridx,ridx)
-		# 	w3 = adj*hrr
-		# 	aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 	aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
-		# 	aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-		# 	# eset[e1] += (adj*hlr)
-		# 	# eset[e2] += (adj*hll)
-		# 	# eset[e3] += (adj*hrr)
-		# if(OP[oc]==:sin)
-		# 			e1 = createEdge(tt,lidx,lidx)
-		# 			w1 = adj*hll
-		# 			# eset[e1] += (adj*hll)
-		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 		elseif (OP[oc] == :cos)
-		# 			e1 = createEdge(tt,lidx,lidx)
-		# 			w1 = adj*hll
-		# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-		# 			# eset[e1] += (adj*hll)
-		# 		else
-		# 			assert(false)
-		# 		end
-
-			# #adj
-			# for i=length(imm)-n+1:length(imm)
-			# 	push!(adjs,imm[i]*adj)
-			# end
-			# resize!(imm,length(imm)-n)
-			# resize!(tr,length(tr)-n)
-		end
-	end
-end
-
-
-# function reverse_hess_ep1(tt::TT_TYPE, idx::IDX_TYPE, ss::TV_STACK, adj::VV_TYPE, eset::EdgeSet)
-# 	# debug("enter - ", adj)
-# 	this_idx = idx
-# 	ntype = tt[idx]
-# 	idx -= 1
-# 	if(ntype ==TYPE_P)  
-# 		#deleting all edges that has an endpoint to this node
-# 		removeEdges(eset,this_idx)
-# 	elseif(ntype == TYPE_V)
-# 		#do nothing
-# 	elseif(ntype == TYPE_OB)
-# 		hlr = pop!(ss)
-# 		hrr = pop!(ss)
-# 		hll = pop!(ss)
-# 		hr = pop!(ss)
-# 		hl = pop!(ss)
-
-# 		oc = tt[idx]
-# 		assert(B_OP_START<= oc <= B_OP_END)
-# 		idx -= 1
-# 		ridx = tt[idx]
-# 		idx -= 1
-# 		# rt = tt[ridx]
-# 		lidx = tt[idx]
-# 		idx -= 1
-# 		# lt = tt[lidx]
-		
-# 		deset = Set{Edge}()
-# 		aeset = EdgeSet()
-
-# 		#pushing
-# 		state = start(eset)
-# 		# println("binary op before pushing - eset(",length(eset),")")
-# 		while !done(eset,state)
-# 			(pair, state) = next(eset,state)
-# 			e = pair[1]
-# 			w = pair[2]
-# 			if(isEndPointOnEdge(e,this_idx))
-# 				if(isSelfEdge(e))
-# 					#case 2
-# 					e1 = createEdge(tt,lidx,ridx)
-# 					w1 = hl*hr*w
-# 					e2 = createEdge(tt,lidx,lidx)
-# 					w2 = hl*hl*w
-# 					e3 = createEdge(tt,ridx,ridx)
-# 					w3 = hr*hr*w
-# 					aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 					aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
-# 					aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-# 				else
-# 					#case 1 , 3
-# 					oidx = e.lidx == this_idx? e.ridx: e.lidx
-# 					e1 = createEdge(tt,lidx,oidx)
-# 					e2 = createEdge(tt,ridx,oidx)
-# 					w1 = e1.lidx == e1.ridx? (2*hl*w): (hl*w)
-# 					w2 = e2.lidx == e2.ridx? (2*hr*w): (hr*w)
-# 					aeset[e1] = haskey(aeset,e1)? aeset[e1]+w1:w1
-# 					aeset[e2] = haskey(aeset,e2)? aeset[e2]+w2:w2
-# 				end
-# 				# delete!(eset,e)
-# 				push!(deset,e)
-# 			end
-# 		end
-
-# 		for k in deset  #delete the pushed edges
-# 			delete!(eset,k)
-# 		end
-# 		# println("binary op after pushing - eset(",length(eset),")")
-# 		# println("before remove set rmv(",length(rmv),") - eset(",length(eset),")")
-# 		# setdiff!(eset, rmv)
-# 		# println("after remove set rmv(",length(rmv),") - eset(",length(eset),")")
-
-# 		#creating
-# 		if(OP[oc] == :+ || OP[oc] == :-)
-# 			#do nothing for linear operator
-# 		elseif(OP[oc] == :*)
-# 			e1 = createEdge(tt,lidx,ridx)
-# 			w1 = adj*hlr
-# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 			# eset[e1] += (adj*hlr)
-# 		elseif(OP[oc] == :/)
-# 			e1 = createEdge(tt,lidx,ridx)
-# 			w1 = adj*hlr
-# 			e3 = createEdge(tt,ridx,ridx)
-# 			w3 = adj*hrr
-# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-# 			# eset[e1] += (adj*hlr)
-# 			# eset[e3] += (adj*hrr)
-# 		elseif(OP[oc] == :^)
-# 			e1 = createEdge(tt,lidx,ridx)
-# 			w1 = adj*hlr
-# 			e2 = createEdge(tt,lidx,lidx)
-# 			w2 = adj*hll
-# 			e3 = createEdge(tt,ridx,ridx)
-# 			w3 = adj*hrr
-# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 			aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
-# 			aeset[e3] = haskey(aeset,e3)?aeset[e3]+w3:w3
-# 			# eset[e1] += (adj*hlr)
-# 			# eset[e2] += (adj*hll)
-# 			# eset[e3] += (adj*hrr)
-# 		else
-# 			assert(false);
-# 		end
-		
-# 		for (k,v) in aeset  #adding the pushed and created edges
-# 			# println("reverse_hess_ep1 - add, ",k," weight ",v)
-# 			eset[k] = haskey(eset,k)?eset[k]+v:v
-# 			# @show eset
-# 		end
-
-# 		#adjoint
-# 		ladj = adj*hl;
-# 		radj = adj*hr;
-
-# 		#recursive
-# 		reverse_hess_ep1(tt, lidx, ss, ladj, eset)
-# 		reverse_hess_ep1(tt, ridx, ss, radj, eset)
-# 	elseif(ntype == TYPE_OU)
-# 		hll = pop!(ss)
-# 		hl = pop!(ss)
-# 		oc = tt[idx]
-# 		idx -= 1
-# 		assert(U_OP_START<= oc <= U_OP_END)
-# 		lidx = tt[idx]
-# 		idx -= 1
-
-# 		deset = Set{Edge}()
-# 		aeset = EdgeSet()
-
-# 		#pushing
-# 		state = start(eset)
-# 		while !done(eset,state)
-# 			(pair, state) = next(eset,state)
-# 			e = pair[1]
-# 			w = pair[2]
-# 			if(isEndPointOnEdge(e,this_idx))
-# 				if(isSelfEdge(e))
-# 					#case 2
-# 					e2 = createEdge(tt,lidx,lidx)
-# 					w2 = hl*hl*w
-# 					aeset[e2] = haskey(aeset,e2)?aeset[e2]+w2:w2
-# 					# eset[e2] += hl*hl*w
-# 				else
-# 					#case 1, 3
-# 					oidx = e.lidx == this_idx? e.ridx:e.lidx
-# 					e1 = createEdge(tt,lidx,oidx)
-# 					w1 = e1.lidx == e1.ridx? 2*hl*w: hl*w
-# 					aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 				end
-# 				# delete!(eset, e)
-# 				push!(deset,e)
-# 			end
-# 		end
-
-# 		for k in deset  #delete the pushed edges
-# 			delete!(eset,k)
-# 		end
-
-# 		#creating
-# 		if(OP[oc]==:sin)
-# 			e1 = createEdge(tt,lidx,lidx)
-# 			w1 = adj*hll
-# 			# eset[e1] += (adj*hll)
-# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 		elseif (OP[oc] == :cos)
-# 			e1 = createEdge(tt,lidx,lidx)
-# 			w1 = adj*hll
-# 			aeset[e1] = haskey(aeset,e1)?aeset[e1]+w1:w1
-# 			# eset[e1] += (adj*hll)
-# 		else
-# 			assert(false)
-# 		end
-
-# 		for (k,v) in aeset  #adding the pushed and created edges
-# 			eset[k] = haskey(eset,k)?eset[k]+v:v
-# 		end
-
-# 		#adjoint
-# 		ladj = adj*hl;
-		
-# 		#recursive
-# 		reverse_hess_ep1(tt,lidx,ss,ladj,eset)
-# 	else
-# 		assert(false)
-# 	end
-# 	# debug("exit")
-# end
-
-
-# function reverse_hess_ep2(eset::EdgeSet,factor::VV_TYPE, veset::EdgeSet)
-# 	# veset = EdgeSet()
-# 	# @show eset
-# 	state = start(eset)
-# 	while !done(eset,state)
-# 		(pair, state) = next(eset, state)
-# 		e = pair[1]
-# 		w = pair[2]
-# 		lidx = e.lidx
-# 		ridx = e.ridx
-# 		assert(e.tt[lidx] == TYPE_V)
-# 		assert(e.tt[ridx] == TYPE_V)
-# 		lidx -= 1
-# 		ridx -= 1
-# 		lvidx = e.tt[lidx]
-# 		rvidx = e.tt[ridx]
-# 		if(lidx != ridx && lvidx == rvidx) 
-# 			w += w
-# 		end
-# 		# println("reverse_hess_ep2 - adding (",lvidx,",",rvidx,") = ",w)
-# 		ve = Edge(e.tt,lvidx,rvidx)
-# 		# println("reverse_hess_ep2 - make edge ",lvidx," -- ",rvidx)
-
-# 		if(!haskey(veset,ve))
-# 			veset[ve] = w*factor
-# 		else
-# 			veset[ve] += w*factor
-# 		end
-# 	end
-# 	# @show veset
-# 	return veset
-# end
 
 
 
@@ -535,8 +474,11 @@ function hess_structure_lower{I,V}(tape::Tape{I,V}, eset::Dict{I,Set{I}})
 	hess_struct(tape,eset,true)
 end
 
-function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, eset::EdgeSet{I,V})
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V},eset::Dict{I,Dict{I,V}})
+	hess_reverse(tape,vvals,pvals,1.0,eset)
+end
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V,eset::Dict{I,Dict{I,V}})
 	imm = Vector{V}(tape.imm2ord)
 	forward_pass_2ord(tape,vvals,pvals,imm)
-	reverse_pass_2ord(tape,imm,eset)
+	reverse_pass_2ord(tape,imm,factor,eset)
 end

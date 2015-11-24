@@ -290,7 +290,7 @@ switchblock = Expr(:block)
 for i = B_OP_START:B_OP_END
 	o = OP[i]
 	ex = Expr(:block)
-	if(o==:+ || o==:* || o == :^)
+	if(o==:+ || o==:- || o==:* || o == :^)
 		continue
 	else
 		(dx,dy,dxx,dxy,dyy) = S_TO_DIFF[o]
@@ -327,24 +327,60 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		return 0,ret
 		#do not put second order , since all zeros
 		#do not put first order , since all one
+	elseif(s==:-)
+		@inbounds ret = v[i]
+		@inbounds ret -= v[i+1]
+		return 0, ret
 	elseif(s==:*)
 		ret = one(V)
 		@simd for j=i:e
 			@inbounds ret *= v[j]
 		end
-		# push!(ex.args,parse("@simd for j=i:length(v) \n dxj = r[1]/v[j] \n push!(imm,dxj) \n for k=j+1:length(v) \n dxjk = dxj/v[k] \n push!(imm,dxjk) \n end \n end"))
-		n = e - i + 1
-		for j=0:n-1
-			dxj = ret/v[j+i]
-			@inbounds imm[j+imm_i] = dxj  #first order
-			imm_offset = round(I,(n+(n-j))*(j+1)/2)
-			@simd for k=j+1:n-1
-				@inbounds dxjk = dxj/v[k]
-				@inbounds imm[imm_offset+imm_i]=dxjk  #every cross second order, diagonal is zero not pushed. 
-				imm_offset += 1
+		# non stable for zero values
+		# n = e - i + 1
+		# for j=0:n-1
+		# 	dxj = ret/v[j+i]
+		# 	@inbounds imm[j+imm_i] = dxj  #first order
+		# 	imm_offset = round(I,(n+(n-j))*(j+1)/2)
+		# 	@simd for k=j+1:n-1
+		# 		@inbounds dxjk = dxj/v[k]
+		# 		@inbounds imm[imm_offset+imm_i]=dxjk  #every cross second order, diagonal is zero not pushed. 
+		# 		imm_offset += 1
+		# 	end
+		# end
+		# return round(I,n+(n-1)*n/2), ret
+		imm_off = zero(I)
+		for j0=i:e
+			f_ord = one(V)
+			for j1=i:j0-1
+				f_ord *= v[j1]
+			end
+			for j1=j0+1:e
+				f_ord *= v[j1]
+			end
+			imm[imm_off+imm_i] = f_ord
+			imm_off += 1
+		end
+		for j0=i:e
+			for j1=j0+1:e
+				s_ord = one(V)
+				for j3=i:j0-1
+					s_ord *= v[j3]
+				end
+				for j3=j0+1:j1-1
+					s_ord *= v[j3]
+				end
+				for j3=j1+1:e
+					s_ord *= v[j3]
+				end
+				imm[imm_off+imm_i] = s_ord
+				imm_off+=1
 			end
 		end
-		return round(I,(n+n-1)*n/2), ret
+		# n = e-i+1
+		# @show n, imm_off, round(I,n+(n-1)*n/2)
+		# assert(imm_off==round(I,n+(n-1)*n/2))
+		return imm_off, ret
 	elseif(s==:^)
 		@inbounds exponent = v[i+1]
 		@inbounds base = v[i]
@@ -457,7 +493,7 @@ end
 #
 ##########################################################################################
 function tapeBuilder{I}(data::Array{I,1})
-	tape = Tape{I,V}(data)
+	tape = Tape{I,Float64}(data)
 	return tape
 end
 

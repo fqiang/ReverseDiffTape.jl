@@ -89,8 +89,8 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 	iset = Set{I}()
 	@inbounds while(idx <= length(tt))
 		# @show idx
-		eset[idx] = Dict{I,V}()
-		liveVar[idx] = Set{I}()
+		tape.eset[idx] = Dict{I,V}()
+		tape.liveVar[idx] = Set{I}()	
 		ntype = tt[idx]
 		idx += 1
 		if(ntype == TYPE_P)
@@ -105,7 +105,7 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 			idx += 1  #skip oc
 			n = tt[idx]
 			idx += 2  #skip TYPE_O
-			tape.imm2ord = n + round(I,(n+1)*n/2)  #max estimation
+			tape.imm2ord += n + round(I,(n+1)*n/2)  #max estimation
 			tape.maxoperands<n?tape.maxoperands=n:nothing
 			
 			t = Vector{I}() #slow but works

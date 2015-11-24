@@ -400,9 +400,6 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     jcsc = sparse(jI,jJ,jV)
     @show jI
     @show jJ
-
-    
-
    
 
     # @show csc
@@ -415,12 +412,10 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     # assert(csc.rowval == jcsc.rowval)
 
     
-    # d.laghess_nnz = true
-    # d.laghess_I = I
-    # d.laghess_J = J
-    # return  d.laghess_I, d.laghess_J
-    return jI,jJ
-
+    d.laghess_nnz = true
+    d.laghess_I = I
+    d.laghess_J = J
+    return  d.laghess_I, d.laghess_J
 end
 
 function MathProgBase.eval_hesslag(
@@ -430,40 +425,40 @@ function MathProgBase.eval_hesslag(
     obj_factor::Float64,        # Lagrangian multiplier for objective
     lambda::Vector{Float64})    # Multipliers for each constraint
     
-    # assert(length(lambda) == d.numConstr)
-    # assert(length(H) == length(d.laghess_J))
-    # assert(length(H) == length(d.laghess_I))
-
-    # tic()
-
-    # # assert(false) #TODO reverse hess ep
-    # eset = EdgeSet()
-    # reverse_hess_ep(d.obj_tt,x,d.pvals,obj_factor,eset)
-
-    # for i=1:d.numConstr
-    #     reverse_hess_ep(d.constr_tt[i],x,d.pvals,lambda[i],eset)
-    # end
-
-    # j = 1
-    # state = start(eset)
-    # while !done(eset,state)
-    #     (e,state) = next(eset,state)
-    #     H[j] = e.second
-    #     j += 1
-    # end
-
-    # ### or using BLAS function -- not sure
-    # # obj_hess = sparse(d.laghess_I,d.laghess_J)
-    # # 
-    # # 
-    # d.eval_hesslag_timer += toq()
-
-    # # csc = sparse(d.laghess_I,d.laghess_J,H)
-    # # @show csc
+    assert(length(lambda) == d.numConstr)
+    assert(length(H) == length(d.laghess_J))
+    assert(length(H) == length(d.laghess_I))
 
     tic()
-    # H = Array{Float64,1}(length(d.jd.hess_I))
-    MathProgBase.eval_hesslag(d.jd,H,x,obj_factor,lambda)
+
+    # assert(false) #TODO reverse hess ep
+    eset = EdgeSet{Int,Float64}()
+    hess_reverse(d.obj_tt,x,d.pvals,obj_factor,eset)
+
+    for i=1:d.numConstr
+        hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i],eset)
+    end
+
+    j = 1
+    state = start(eset)
+    while !done(eset,state)
+        (e,state) = next(eset,state)
+        H[j] = e.second
+        j += 1
+    end
+
+    ### or using BLAS function -- not sure
+    # obj_hess = sparse(d.laghess_I,d.laghess_J)
+    # 
+    # 
+    d.eval_hesslag_timer += toq()
+
+    # csc = sparse(d.laghess_I,d.laghess_J,H)
+    # @show csc
+
+    tic()
+    jH = Array{Float64,1}(length(d.jd.hess_I))
+    MathProgBase.eval_hesslag(d.jd,jH,x,obj_factor,lambda)
     d.jeval_hesslag_timer += toq()
 
     
