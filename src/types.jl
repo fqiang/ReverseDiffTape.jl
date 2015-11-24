@@ -1,12 +1,13 @@
 
 #type alias
 typealias OP_TYPE Int
+typealias IDX_TYPE Int
+typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
 #the AD types below
 const TYPE_V = 1	#variable node
 const TYPE_P = 2	#param node
 const TYPE_O = 3
-
 
 ##############################################################################
 # 

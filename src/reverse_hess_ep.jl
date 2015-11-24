@@ -1,8 +1,5 @@
-typealias IDX_TYPE Int
-
 #edge pusing algorithm for Hessian reverse AD
 
-typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
 
 @inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
 	for i=1:n
