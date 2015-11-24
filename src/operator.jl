@@ -379,7 +379,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		end
 		# n = e-i+1
 		# @show n, imm_off, round(I,n+(n-1)*n/2)
-		# assert(imm_off==round(I,n+(n-1)*n/2))
+		assert(imm_off==round(I,(e-i+1)+((e-i+1)-1)*(e-i+1)/2))
 		return imm_off, ret
 	elseif(s==:^)
 		@inbounds exponent = v[i+1]

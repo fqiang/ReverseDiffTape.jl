@@ -14,9 +14,9 @@ export
 #constant
 	OP, S_TO_OC,
 #types
-	IDX_TYPE, TT_TYPE, TV_TYPE, TV_STACK, VV_TYPE, TYPE_V, TYPE_P, TYPE_OU, TYPE_OB,
+	TYPE_V, TYPE_P, TYPE_O,
 #Objects
-	AD, AD_O, AD_P, AD_V, Edge, EdgeSet, Tape,
+	AD, AD_O, AD_P, AD_V, EdgeSet, Tape,
 #Functions
 	tapeBuilder, #building tape from Julia expression 
 	feval, grad_reverse, hess_reverse, grad_structure, hess_structure_lower, clean_hess_eset

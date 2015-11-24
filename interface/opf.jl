@@ -2,6 +2,8 @@
 #  https://github.com/mlubin/JuMPSupplement/blob/master/acpower/opf.jl
 #
 
+# include("interface.jl") #tape interface now
+
 using JuMP
 using Ipopt
 using Compat
@@ -229,7 +231,7 @@ function prepdata(bus, branch)
     return branches, buses
 end
 
-numbuses = ARGS[1]
+numbuses = 662
 branches, buses = prepdata(readdlm("IEEE$numbuses.bus"),readdlm("IEEE$numbuses.branch"))
 
 

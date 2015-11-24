@@ -276,9 +276,11 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 			lvi = tape.liveVar[i] #live var set at i
 
 			for p in lvi  #for each upper live vars
+				# @show p, i
 				w = getw(tape.eset,i,p)
 				if(i==p)
 					if(n==1) #1-ary operator
+						# @show "pushing 1-ary", OP[oc],tr[trlen]
 						incr(tape.eset,tr[trlen],tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
 					else  #2 or more
 						if(OP[oc]==:+ )
@@ -324,7 +326,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 						# @show imm
 						# @show tr
 						# @show imm[immlen-1], tr[trlen], w
-						incr(tape.eset,tr[trlen],tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
+						incr(tape.eset,tr[trlen],p,imm[immlen-1]*imm[immlen-1]*w)
 					else
 						if(OP[oc]==:+)
 							for k=trlen-n+1:trlen
@@ -358,6 +360,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 
 			#creating
 			if n==1
+				# @show "creating 1-ary", OP[oc],tr[trlen]
 				incr(tape.eset,tr[trlen],tr[trlen],adj*imm[immlen])
 			else
 				if(OP[oc] == :+ || OP[oc] ==:-)
@@ -366,6 +369,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 					j = immlen - round(I,n*(n-1)/2) + 1
 					for k=trlen-n+1:trlen
 						for k0=k+1:trlen
+							# @show "creating n-ary",n, OP[oc],tr[trlen] 
 							incr(tape.eset,tr[k],tr[k0],adj*imm[j])
 							j+=1
 						end
@@ -433,7 +437,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 		end #end TYPE_O
 		# println("++++++++++++++++++++++++++++++++++++")
 	end  #end while
-
+	assert(immlen == 0 && trlen == 0)
 	# @show tape.eset
 
 	# @show vidx
