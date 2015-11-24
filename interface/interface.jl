@@ -390,16 +390,16 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     assert(length(I) == length(J))
     V = ones(Float64,length(I))
     csc = sparse(I,J,V)
-    @show I
-    @show J
+    # @show I
+    # @show J
 
 
     (jI, jJ) = MathProgBase.hesslag_structure(d.jd)
     assert(length(jI) == length(jJ))
     jV = ones(Float64,length(jI))
     jcsc = sparse(jI,jJ,jV)
-    @show jI
-    @show jJ
+    # @show jI
+    # @show jJ
    
 
     # @show csc
@@ -425,26 +425,31 @@ function MathProgBase.eval_hesslag(
     obj_factor::Float64,        # Lagrangian multiplier for objective
     lambda::Vector{Float64})    # Multipliers for each constraint
     
+
     assert(length(lambda) == d.numConstr)
     assert(length(H) == length(d.laghess_J))
     assert(length(H) == length(d.laghess_I))
-
-    tic()
-
-    # assert(false) #TODO reverse hess ep
-    eset = EdgeSet{Int,Float64}()
-    hess_reverse(d.obj_tt,x,d.pvals,obj_factor,eset)
-
+    
+    #cleaning up temporary values
+    clean_hess_eset(d.obj_tt)
     for i=1:d.numConstr
-        hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i],eset)
+        clean_hess_eset(d.constr_tt[i])
     end
 
-    j = 1
-    state = start(eset)
-    while !done(eset,state)
-        (e,state) = next(eset,state)
-        H[j] = e.second
-        j += 1
+
+    tic()
+    h = EdgeSet{Int,Float64}()
+    hess_reverse(d.obj_tt,x,d.pvals,obj_factor,h)
+    for i=1:d.numConstr
+        hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i],h)
+    end
+
+    m = 1
+    for (i,row) in h
+        for (j,v) in row
+            H[m] = v
+            m += 1
+        end
     end
 
     ### or using BLAS function -- not sure
@@ -453,22 +458,25 @@ function MathProgBase.eval_hesslag(
     # 
     d.eval_hesslag_timer += toq()
 
-    # csc = sparse(d.laghess_I,d.laghess_J,H)
+    csc = sparse(d.laghess_I,d.laghess_J,H)
     # @show csc
 
     tic()
     jH = Array{Float64,1}(length(d.jd.hess_I))
     MathProgBase.eval_hesslag(d.jd,jH,x,obj_factor,lambda)
     d.jeval_hesslag_timer += toq()
-
     
     # @show d.jd.hess_I
     # @show d.jd.hess_J
     # @show jH
     # jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
     # @show jcsc
+    # @show csc.colptr, jcsc.colptr
+    # @show csc.rowval,jcsc.rowval
     # assert(csc.colptr == jcsc.colptr)
     # assert(csc.rowval == jcsc.rowval)
+    # @show csc.m,jcsc.m
+    # @show csc.n,jcsc.n
     # assert(csc.m == jcsc.m)
     # assert(csc.n == jcsc.n)
     

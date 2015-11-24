@@ -1,5 +1,5 @@
 #temp2.jl
-include("test_large.jl") 
+include("test_media.jl") 
 using ReverseDiffTape
 jd = m.internalModel.evaluator.jd;
 ex=MathProgBase.obj_expr(jd);
@@ -38,9 +38,16 @@ TapeInterface.assertArrayEqualEps(g,jg)
 imm=Vector{Float64}(tt.imm2ord);
 @time ReverseDiffTape.forward_pass_2ord(tt,x,p,imm)
 eset=Dict{Int,Set{Int}}();
-@time ReverseDiffTape.hess_structure(tt,eset)
+@time ReverseDiffTape.hess_structure_lower(tt,eset)
+h = Dict{Int,Dict{Int,Float64}}()
+@time ReverseDiffTape.reverse_pass_2ord(tt,imm,1.0,h)
 
 
+#########################
+H = Array{Float64,1}(length(jd.hess_I));
+lambda=rand(400);
+obj_factor = 0.2;
+@time MathProgBase.eval_hesslag(jd,H,x,0.1,lambda)
 ###############
 
 

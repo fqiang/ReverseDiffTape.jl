@@ -30,4 +30,4 @@ end
 
 solve(m)
 
-# include("comparion.jl")
+include("comparion.jl")

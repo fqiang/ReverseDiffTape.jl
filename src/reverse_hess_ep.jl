@@ -12,25 +12,25 @@ end
 
 @inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
 	# @show i1
-	assert(haskey(eset,i1))
+	# assert(haskey(eset,i1))
 	eset[i1][i1] = 0.0
 end
 
 @inline function push_edge{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
 	# @show i1,i2
-	assert(i1!=i2)
+	# assert(i1!=i2)
 	# @show "push_edge", i1,i2
 	if i1<i2
-		assert(haskey(eset,i2))
+		# assert(haskey(eset,i2))
 		eset[i2][i1] = 0.0
 	else
-		assert(haskey(eset,i1))
+		# assert(haskey(eset,i1))
 		eset[i1][i2] = 0.0
 	end
 end
 
 @inline function push_live_var{I}(liveVar::Dict{I,Set{I}},i1::I,i2::I)
-	assert(haskey(liveVar,i1))
+	# assert(haskey(liveVar,i1))
 	push!(liveVar[i1],i2)
 end
 
@@ -44,7 +44,7 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 	assert(tape.nnode-1 == length(tr))
 	# assert(isempty(eset))
 	
-	while (idx > 0)
+	@inbounds while (idx > 0)
 		ntype = tt[idx]
 		idx -= 1
 		if(ntype == TYPE_P)
@@ -70,7 +70,7 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 						push_diag(tape.eset,ci)
 						for j1=j0+1:trlen
 							cii = tr[j1] #child of i
-							assert(ci<cii) #ci always smaller since tr building
+							# assert(ci<cii) #ci always smaller since tr building
 							push_live_var(tape.liveVar,ci,cii)
 							push_live_var(tape.liveVar,cii,ci)
 							push_edge(tape.eset,ci,cii)
@@ -99,7 +99,7 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 					ci = tr[j0]
 					for j1=j0+1:trlen
 						cii = tr[j1]
-						assert(ci<cii)
+						# assert(ci<cii)
 						# @show OP[oc],ci,cii
 						push_live_var(tape.liveVar,ci,cii)
 						push_live_var(tape.liveVar,cii,ci)
@@ -109,7 +109,7 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 			else #binary
 				ri = tr[trlen]
 				li = tr[trlen-1]
-				assert(li<ri)
+				# assert(li<ri)
 			
 				push_live_var(tape.liveVar,li,li)
 				push_diag(tape.eset,li) #dxx
@@ -157,12 +157,12 @@ end
 @inline function getw{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
 	# @show "in w",i1,i2
 	if(i1>=i2)
-		assert(haskey(eset,i1))
-		assert(haskey(eset[i1],i2))
+		# assert(haskey(eset,i1))
+		# assert(haskey(eset[i1],i2))
 		return eset[i1][i2]
 	else
-		assert(haskey(eset,i2))
-		assert(haskey(eset[i2],i1))
+		# assert(haskey(eset,i2))
+		# assert(haskey(eset[i2],i1))
 		return eset[i2][i1]
 	end
 end
@@ -170,12 +170,12 @@ end
 @inline function incr{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,w::V)
 	# @show "incr",i1,i2, w
 	if i1>=i2 
-		assert(haskey(eset,i1))
-		assert(haskey(eset[i1],i2))
+		# assert(haskey(eset,i1))
+		# assert(haskey(eset[i1],i2))
 		eset[i1][i2]+=w 
 	else
-		assert(haskey(eset,i2))
-		assert(haskey(eset[i2],i1))
+		# assert(haskey(eset,i2))
+		# assert(haskey(eset[i2],i1))
 		eset[i2][i1]+=w
 	end
 end
@@ -327,28 +327,24 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 						# @show imm
 						# @show tr
 						# @show imm[immlen-1], tr[trlen], w
-						t = imm[immlen-1]*imm[immlen-1]*w
-						# @show t
-						# @show tape.eset
-						# @show tape.eset[tr[trlen]]
-						incr(tape.eset,tr[trlen],trlen[trlen],t)
+						incr(tape.eset,tr[trlen],tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
 					else
 						if(OP[oc]==:+)
 							for k=trlen-n+1:trlen
 								incr(tape.eset,tr[k],p,w)
-								assert(p!=tr[k])
+								# assert(p!=tr[k])
 							end
 						elseif(OP[oc]==:-)
 							l = tr[trlen-1]
 							r = tr[trlen]
 							incr(tape.eset,l,p,w)
 							incr(tape.eset,r,p,-1.0*w)
-							assert(p!=l && p!=r)
+							# assert(p!=l && p!=r)
 						elseif(OP[oc] == :*)
 							j = immlen - round(I,n+n*(n-1)/2)+1
 							for k=trlen -n+1:trlen
 								incr(tape.eset,tr[k],p,imm[j]*w)
-								assert(p!=tr[k])
+								# assert(p!=tr[k])
 							end
 						else #binary
 							l = tr[trlen-1]
@@ -357,7 +353,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, imm::Array{V,1}, factor::V, ese
 							dr = imm[immlen-3]
 							incr(tape.eset,l,p,dl*w)
 							incr(tape.eset,r,p,dr*w)
-							assert(p!=l && p!=r)
+							# assert(p!=l && p!=r)
 						end
 					end
 				end

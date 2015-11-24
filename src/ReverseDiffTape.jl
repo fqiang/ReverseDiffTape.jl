@@ -19,7 +19,7 @@ export
 	AD, AD_O, AD_P, AD_V, Edge, EdgeSet, Tape,
 #Functions
 	tapeBuilder, #building tape from Julia expression 
-	feval, grad_reverse, hess_reverse, grad_structure, hess_structure_lower
+	feval, grad_reverse, hess_reverse, grad_structure, hess_structure_lower, clean_hess_eset
 
 
 include("./types.jl")
