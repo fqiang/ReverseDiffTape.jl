@@ -18,7 +18,7 @@ jeval_grad_f2 = 0.0
 jeval_jac_g2 = 0.0
 jeval_hesslag2 = 0.0
 
-for i=1:100
+for i=1:10
 	solve(m)
 	eval_f += m.internalModel.evaluator.eval_f_timer
     eval_g += m.internalModel.evaluator.eval_g_timer

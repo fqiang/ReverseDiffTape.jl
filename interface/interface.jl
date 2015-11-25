@@ -224,8 +224,9 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     d.eval_grad_f_timer += toq()
     # @show g
    
-    tic()
     jg = Array{Float64,1}(length(x))
+    fill!(jg,0.0)
+    tic()
     MathProgBase.eval_grad_f(d.jd,jg,x)
     d.jeval_grad_f_timer += toq()
     # @show jg

@@ -133,8 +133,8 @@ function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}) #s
 end
 
 function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, g::Vector{V})  #dense version
-	assert(length(tape.g_I)==tape.nvnode)
-	assert(length(tape.g)==tape.nvnode)
+	# assert(length(tape.g_I)==tape.nvnode)
+	# assert(length(tape.g)==tape.nvnode)
 	grad_reverse(tape,vvals,pvals)
 	@inbounds for i = 1:length(tape.g_I)
 		g[tape.g_I[i]] += tape.g[i]
