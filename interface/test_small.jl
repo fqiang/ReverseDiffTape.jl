@@ -17,4 +17,4 @@ m = Model(solver=TapeSolver(IpoptSolver()))
 solve(m)
 
 
-# include("comparion.jl")
+include("comparion.jl")

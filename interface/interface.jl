@@ -217,6 +217,8 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     # @show x
     assert(length(g) == length(x))
     fill!(g,0.0)
+    grad_structure(d.obj_tt)
+    
     tic()
     grad_reverse(d.obj_tt,x,d.pvals,g)
     d.eval_grad_f_timer += toq()
@@ -238,7 +240,7 @@ end
 function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     assert(length(g) == d.numConstr)
     tic()
-    for i=1:1:d.numConstr
+    for i=1:d.numConstr
         g[i]=feval(d.constr_tt[i],x,d.pvals)
     end
     d.eval_g_timer += toq()
@@ -265,16 +267,12 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
 
     I = Array{Int, 1}()
     J = Array{Int, 1}()
-    idxes = Array{Int,1}()
     for i=1:d.numConstr
-        grad_structure(d.constr_tt[i],idxes)
-        state = start(idxes)
-        while !done(idxes,state)
-            (j,state) = next(idxes,state)
+        g_I = grad_structure(d.constr_tt[i])
+        for j in g_I
             push!(I,i)
             push!(J,j)
         end
-        empty!(idxes)
     end
     # @show I
     # @show J
@@ -313,22 +311,19 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     fill!(J,0.0)
 
     tic()
-    g = Array{Tuple{Int,Float64},1}()
+    J_len = 0
     for i = 1:d.numConstr
-        grad_reverse(d.constr_tt[i],x,d.pvals,g)
-    end
-
-    for i =1:length(g)
-        (idx,v) = g[i]
-        J[i] = v
+        g = grad_reverse(d.constr_tt[i],x,d.pvals)
+        append_array(J,J_len,g,0,length(g))
+        J_len += length(g)
     end
     d.eval_jac_g_timer += toq()
     
     # @show J
     csc = sparse(d.jac_I,d.jac_J,J)
 
-    tic()
     jJ = zeros(Float64,length(d.jd.jac_I))
+    tic()
     MathProgBase.eval_jac_g(d.jd,jJ,x)
     d.jeval_jac_g_timer += toq()
 

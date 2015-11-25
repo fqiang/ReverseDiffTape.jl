@@ -420,8 +420,15 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
 	vset = Set{I}()
 	istk = Vector{I}()
 	tapeBuilder(expr,tape, pvals, vset, istk)
+	assert(length(tape.tr)==tape.nnode-1)
+	
 	tape.nvar = length(vset)
-	assert(length(tape.tr) == tape.nnode-1)
+	tape.imm1ordlen = tape.nnode -1
+	tape.imm1ord = Vector{V}(tape.imm1ordlen)
+	tape.imm2ord = Vector{V}(tape.imm2ordlen)
+	tape.stk = Vector{V}(tape.nnode)
+	tape.g_I = Vector{I}(tape.nvnode)
+	tape.g = Vector{V}(tape.nvnode)
 	# @show tape
 end
 
@@ -439,8 +446,6 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},vset::Se
 		push!(vset,vidx)
 		tape.nvnode += 1
 		tape.nnode += 1
-		tape.eset[length(tt)-2] = Dict{I,V}()
-		tape.liveVar[length(tt)-2] = Set{I}()
 	elseif(head == :call)
 		# @show expr.args[2]
 		op = expr.args[1]
@@ -454,17 +459,18 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},vset::Se
 		push!(tt,n)
 		push!(tt,TYPE_O)
 
+		tape.fstkmax = max(tape.fstkmax,length(istk))
 		t = Vector{I}()
 		for i=1:n
-			push!(t,pop!(istk))
+			cidx = pop!(istk)
+			push!(t,cidx)
 		end
 		append!(tape.tr,reverse!(t))
 		push!(istk,length(tt)-3)
 		tape.nnode += 1
 		tape.maxoperands < length(expr.args)-1? tape.maxoperands = length(expr.args)-1:nothing
-		tape.imm2ord += n + round(I,n*(n+1)/2)
-		tape.eset[length(tt)-3] = Dict{I,V}()
-		tape.liveVar[length(tt)-3] = Set{I}()
+		tape.imm2ordlen += n + round(I,n*(n+1)/2)
+		# tape.eset[length(tt)-3] = Dict{I,V}()
 		# @show length(tt) - 3
     else
     	println("error !")
@@ -483,8 +489,6 @@ function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Array{V,1},vset::S
 	push!(istk,length(tt)-2)
 	push!(pvals,expr)
 	tape.nnode += 1
-	tape.eset[length(tt)-2] = Dict{I,V}()
-	tape.liveVar[length(tt)-2] = Set{I}()
 end
 
 ##########################################################################################

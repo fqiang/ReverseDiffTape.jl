@@ -62,22 +62,49 @@ end
 ##############################################################################
 
 type Tape{I,V}
-	tt::Array{I,1}
-	tr::Array{I,1}
+	tt::Vector{I}
+	stk::Vector{V}
+	g_I::Vector{I}
+	g::Vector{V}
+	imm1ord::Vector{V}
+	imm1ordlen::I
+
+	tr::Vector{I}
+	trlen::I
+
 	eset::Dict{I,Dict{I,V}}
 	liveVar::Dict{I,Set{I}}
+	imm2ord::Vector{V}
+	imm2ordlen::I
+	
 	nvar::I
 	nvnode::I
 	nnode::I
 	maxoperands::I
-	imm2ord::I
+	fstkmax::I
 	
 	function Tape()
-		return new(Array{I,1}(),Array{I,1}(),Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+		return new(Vector{I}(),
+			Vector{V}(),
+			Vector{I}(),
+			Vector{V}(),
+			Vector{V}(),zero(I),
+			Vector{I}(),zero(I),
+			Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
+			Vector{V}(),zero(I),
+			zero(I),zero(I),zero(I),zero(I),zero(I))
 	end
 
-	function Tape(data::Array{I,1})
-		this = new(data,Array{I,1}(),Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),zero(I),zero(I),zero(I),zero(I),zero(I))
+	function Tape(data::Vector{I})
+		this = new(data,
+			Vector{V}(),
+			Vector{I}(),
+			Vector{V}(),
+			Vector{V}(),zero(I),
+			Vector{I}(),zero(I),
+			Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
+			Vector{V}(),zero(I),
+			zero(I),zero(I),zero(I),zero(I),zero(I))
 		analysize_tape(this)
 		return this
 	end
@@ -99,8 +126,6 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 	iset = Set{I}()
 	@inbounds while(idx <= length(tt))
 		# @show idx
-		tape.eset[idx] = Dict{I,V}()
-		tape.liveVar[idx] = Set{I}()	
 		ntype = tt[idx]
 		idx += 1
 		if(ntype == TYPE_P)
@@ -115,12 +140,14 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 			idx += 1  #skip oc
 			n = tt[idx]
 			idx += 2  #skip TYPE_O
-			tape.imm2ord += n + round(I,(n+1)*n/2)  #max estimation
+			tape.imm2ordlen += n + round(I,(n+1)*n/2)  #max estimation
 			tape.maxoperands<n?tape.maxoperands=n:nothing
 			
+			tape.fstkmax = max(tape.fstkmax,length(istk))
 			t = Vector{I}() #slow but works
 			for i = 1:n
-				push!(t,pop!(istk))
+				cidx = pop!(istk)
+				push!(t,cidx)
 			end
 			append!(tape.tr, reverse!(t))
 			push!(istk,idx-4)
@@ -128,7 +155,25 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 		tape.nnode += 1
 	end
 	tape.nvar = length(iset)
+
+	# init
+	tape.imm1ord = Vector{V}(tape.nnode-1)
+	tape.imm1ordlen = length(tape.imm1ord)
+	tape.imm2ord = Vector{V}(tape.imm2ordlen)
+	tape.imm2ordlen = length(tape.imm2ord)
+	tape.g_I = Vector{I}(tape.nvnode)
+	tape.g = Vector{V}(tape.nvnode)
+
+	tape.trlen = length(tape.tr)
+	tape.stk = Vector{V}(tape.nnode) 
+
+	# verification
+	assert(length(tape.imm1ord) == tape.nnode-1)
+	assert(length(tape.tr) == tape.nnode-1)
+
+	
 end
+
 
 immutable AD{I}
 	data::Array{I,1}

@@ -4,8 +4,8 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
 	tt = tape.tt
 	idx = one(I)
 	
-	stk = Vector{V}(tape.maxoperands+20)
-    stklen = 0
+	stk = tape.stk
+    stklen = zero(I)
 	# sizehint!(stk, tape.maxoperands+20)
 	#stk = MyArray{V}(tape.maxoperands+20) #to use MyArray
 	
