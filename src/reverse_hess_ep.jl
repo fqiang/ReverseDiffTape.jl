@@ -35,15 +35,13 @@ end
 	push!(liveVar[i1],i2)
 end
 
-function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
+function hess_struct{I,V}(tape::Tape{I,V})
 	tt = tape.tt
 	tr = tape.tr
 	idx = length(tt)
 	trlen = length(tr)
-	vidx = Set{I}()
 	# @show tape.nnode-1, length(tr)
 	assert(tape.nnode-1 == length(tr))
-	# assert(isempty(eset))
 	
 	@inbounds while (idx > 0)
 		ntype = tt[idx]
@@ -52,7 +50,7 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 			idx -= 2
 		elseif(ntype == TYPE_V)
 			idx -= 2
-			push!(vidx,idx+1)
+			# push!(vidx,idx+1)
 		elseif(ntype == TYPE_O)
 			n = tt[idx]
 			idx -= 1
@@ -130,32 +128,18 @@ function hess_struct{I,V}(tape::Tape{I,V},eset::Dict{I,Set{I}},lo::Bool)
 	# @show tape.eset
 
 	# @show vidx
-	for i in vidx
-		# @show i
-		if(haskey(tape.eset,i))
-			eseti = tape.eset[i]
-			# @show eseti
-			for j in keys(eseti)
-				# @show j
-				ii = tt[i+1]
-				if tt[j] == TYPE_V
+	@inbounds for (i,ieset) in tape.eset
+		if(tt[i] == TYPE_V)
+			for (j,v) in ieset
+				if(tt[j] == TYPE_V)
+					ii = tt[i+1]
 					jj = tt[j+1]
-					# @show ii,jj
-					if(lo)
-						if(!haskey(eset,ii))
-							eset[ii] = Set{I}()
-						end
-						push!(eset[ii],jj)
-					else
-						if(!haskey(eset,jj))
-							eset[jj] = Set{I}()
-						end
-						push!(eset[jj],ii)
-					end
+					push_edge(tape.h,ii,jj)
 				end
 			end
 		end
-	end	
+	end
+	return tape.h
 end
 
 @inline function getw{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
@@ -239,8 +223,7 @@ function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
 	return stk[1]
 end
 
-
-function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V, eset::Dict{I,Dict{I,V}})
+function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 	tr = tape.tr
 	tt = tape.tt
 	idx = length(tt)
@@ -450,43 +433,37 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V, eset::Dict{I,Dict{I,
 	assert(immlen == 0 && trlen == 0)
 	# @show tape.eset
 
+
 	# @show vidx
-	for i in vidx
-		# @show i
-		if(haskey(tape.eset,i))
-			eseti = tape.eset[i]
-			# @show eseti
-			for (j,w) in eseti
-				# @show j
-				ii = tt[i+1]
-				if tt[j] == TYPE_V
+	@inbounds for (i,ieset) in tape.eset
+		if(tt[i] == TYPE_V)
+			for (j,w) in ieset
+				if(tt[j] == TYPE_V)
+					ii = tt[i+1]
 					jj = tt[j+1]
-					if(!haskey(eset,ii))
-						eset[ii] = Dict{I,V}()
-					end
-					if(i!=j && ii==jj)
-						haskey(eset[ii],jj)?eset[ii][jj] += 2.0*w*factor : eset[ii][jj] = 2.0*w*factor
+					if(i!=j&&ii==jj)
+						tape.h[ii][jj] += 2.0*w*factor
 					else
-						haskey(eset[ii],jj)?eset[ii][jj] += w*factor: eset[ii][jj] = w*factor
+						tape.h[ii][jj] += w*factor
 					end
-					# @show ii,jj, eset[ii][jj]
 				end
 			end
 		end
-	end	
+	end
+	return tape.h
 end
 
 
 
 #Interface function
-function hess_structure_lower{I,V}(tape::Tape{I,V}, eset::Dict{I,Set{I}})
-	hess_struct(tape,eset,true)
+function hess_structure_lower{I,V}(tape::Tape{I,V})
+	return hess_struct(tape)
 end
 
-function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V},eset::Dict{I,Dict{I,V}})
-	hess_reverse(tape,vvals,pvals,1.0,eset)
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
+	hess_reverse(tape,vvals,pvals,1.0)
 end
-function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V,eset::Dict{I,Dict{I,V}})
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
 	forward_pass_2ord(tape,vvals,pvals)
-	reverse_pass_2ord(tape,factor,eset)
+	reverse_pass_2ord(tape,factor)
 end

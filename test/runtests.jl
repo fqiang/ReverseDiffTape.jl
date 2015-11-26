@@ -165,29 +165,27 @@ facts("Hessian EP algorithm x1^2*x2^2") do
 	tt = tapeBuilder(c.data)
 
 	eset = Dict{Int,Set{Int}}()
-	hess_structure_lower(tt,eset)
-	h = EdgeSet{Int,Float64}()
-	hess_reverse(tt,x,p,h)
+	hess_structure_lower(tt)
+	h = hess_reverse(tt,x,p)
 	
-	@fact count(eset) --> 3
+	@fact count(h) --> 3
 	@fact h[1][1] --> 2.2*2.2*2
 	@fact h[2][1] --> 2*1.1*2*2.2
 	@fact h[2][2] --> 1.1*1.1*2 
 end
 
-# facts("Hessian EP algorithm sin(x1)") do
-# 	p = Vector{Float64}()
-# 	x = Vector{Float64}()
-# 	x1 = AD_V(x,1.1)
-# 	c = sin(x1)
-# 	tt = tapeBuilder(c.data)
-# 	eset = Dict{Int,Set{Int}}()
-# 	hess_structure_lower(tt,eset)
-# 	h = EdgeSet{Int,Float64}()
-# 	hess_reverse(tt,x,p,h)
-# 	@fact count(eset) --> 1
-# 	@fact h[1][1] --> -sin(1.1) 
-# end
+facts("Hessian EP algorithm sin(x1)") do
+	p = Vector{Float64}()
+	x = Vector{Float64}()
+	x1 = AD_V(x,1.1)
+	c = sin(x1)
+	tt = tapeBuilder(c.data)
+	eset = Dict{Int,Set{Int}}()
+	hess_structure_lower(tt)
+	h = hess_reverse(tt,x,p)
+	@fact count(h) --> 1
+	@fact h[1][1] --> -sin(1.1) 
+end
 
 
 # facts("Hessian EP algorithm cos(x1)") do

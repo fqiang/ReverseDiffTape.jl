@@ -91,6 +91,7 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})
 			immlen -= n
 		end
 	end
+	nothing
 end
 
 function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing order
@@ -110,17 +111,11 @@ function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing
 			idx -= 3
 		end
 	end
-	tape.g = Vector{V}(nnz)
+	tape.nzg = tape.nvnode
+	assert(length(tape.g) == tape.nzg && nnz==tape.nzg)
 end
 
 #Interface function
-function grad_structure{I,V}(tape::Tape{I,V}, iset::Set{I}) #non repeat version
-	grad_struct(tape)
-	@inbounds for i in tape.g_I
-		push!(iset,i)
-	end
-end
-
 function grad_structure{I,V}(tape::Tape{I,V})  #repeat version
 	grad_struct(tape)
 	return tape.g_I
@@ -136,7 +131,9 @@ function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, g:
 	# assert(length(tape.g_I)==tape.nvnode)
 	# assert(length(tape.g)==tape.nvnode)
 	grad_reverse(tape,vvals,pvals)
-	@inbounds for i = 1:length(tape.g_I)
-		g[tape.g_I[i]] += tape.g[i]
+	for i = 1:length(tape.g_I)
+		@inbounds t = tape.g[i]
+		@inbounds g[tape.g_I[i]] += t
 	end
+	nothing
 end

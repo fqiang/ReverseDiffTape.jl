@@ -424,11 +424,14 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
 	
 	tape.nvar = length(vset)
 	tape.imm1ordlen = tape.nnode -1
-	tape.imm1ord = Vector{V}(tape.imm1ordlen)
-	tape.imm2ord = Vector{V}(tape.imm2ordlen)
-	tape.stk = Vector{V}(tape.nnode)
-	tape.g_I = Vector{I}(tape.nvnode)
-	tape.g = Vector{V}(tape.nvnode)
+	resize!(tape.imm1ord, tape.imm1ordlen)
+	resize!(tape.imm2ord, tape.imm2ordlen)
+
+	resize!(tape.stk, tape.nnode)
+	resize!(tape.g_I, tape.nvnode)
+	resize!(tape.g,tape.nvnode)
+	tape.nzg = -1  #-1 until call grad_structure
+	
 	# @show tape
 end
 

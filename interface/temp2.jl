@@ -9,38 +9,17 @@ p = Vector{Float64}();
 tapeBuilder(ex,tt,p);
 x=rand(m.numCols);
 
-@time ReverseDiffTape.feval(tt,x,p)
-@time MathProgBase.eval_f(jd,x)
 
 Profile.clear_malloc_data()
 @time ReverseDiffTape.feval(tt,x,p)
 @time MathProgBase.eval_f(jd,x)
 
-# imm = Vector{Float64}(tt.nnode-1)        
-# ReverseDiffTape.forward_pass_1ord(tt,x,p,imm)
 
-gtuple = Array{Tuple{Int,Float64},1}();
-sizehint!(gtuple, tt.nvnode)
-@time ReverseDiffTape.grad_reverse(tt,x,p,gtuple)
+@time ReverseDiffTape.grad_structure(tt)
+@time ReverseDiffTape.grad_reverse(tt,x,p)
 
-
-gI = Array{Int,1}()
-sizehint!(gI, tt.nvnode)
-@time ReverseDiffTape.grad_structure(tt,gI)
-
-g = Array{Float64,1}(length(x));
-@time ReverseDiffTape.grad_reverse(tt,x,p,g)
-jg = Array{Float64,1}(length(x));
-@time MathProgBase.eval_grad_f(jd,jg,x)
-TapeInterface.assertArrayEqualEps(g,jg)
-
-
-imm=Vector{Float64}(tt.imm2ord);
-@time ReverseDiffTape.forward_pass_2ord(tt,x,p,imm)
-eset=Dict{Int,Set{Int}}();
-@time ReverseDiffTape.hess_structure_lower(tt,eset)
-h = Dict{Int,Dict{Int,Float64}}()
-@time ReverseDiffTape.reverse_pass_2ord(tt,imm,1.0,h)
+@time ReverseDiffTape.hess_structure_lower(tt)
+@time ReverseDiffTape.hess_reverse(tt,x,p)
 
 
 #########################

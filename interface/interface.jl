@@ -216,11 +216,15 @@ end
 function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     # @show x
     assert(length(g) == length(x))
+    tape = d.obj_tt
+    if tape.nzg==-1
+        grad_structure(tape)
+    end
+    assert(tape.nzg!=-1)
+
     fill!(g,0.0)
-    grad_structure(d.obj_tt)
-    
     tic()
-    grad_reverse(d.obj_tt,x,d.pvals,g)
+    grad_reverse(tape,x,d.pvals,g)
     d.eval_grad_f_timer += toq()
     # @show g
    
@@ -241,8 +245,8 @@ end
 function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     assert(length(g) == d.numConstr)
     tic()
-    for i=1:d.numConstr
-        g[i]=feval(d.constr_tt[i],x,d.pvals)
+    @inbounds for i=1:d.numConstr
+        @inbounds g[i]=feval(d.constr_tt[i],x,d.pvals)
     end
     d.eval_g_timer += toq()
     # @show g
@@ -366,20 +370,25 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     I = Array{Int,1}()
     J = Array{Int,1}()
 
-    veset = Dict{Int,Set{Int}}()
+    # veset = Dict{Int,Set{Int}}()
     # println("obj ",MathProgBase.obj_expr(d.jd))
-    hess_structure_lower(d.obj_tt,veset)
+    h =hess_structure_lower(d.obj_tt)
+
+    for (i,h_i) in h
+        for (j,v) in h_i
+            push!(I,i)
+            push!(J,j)
+        end
+    end
 
     for i=1:d.numConstr
         # println(i," ",MathProgBase.constr_expr(d.jd,i))
-        hess_structure_lower(d.constr_tt[i],veset)
-    end
-    
-    for p0 in veset
-        i = p0[1]
-        for j in p0[2]
-            push!(I,i)
-            push!(J,j)
+        @inbounds h = hess_structure_lower(d.constr_tt[i])
+        for (i,h_i) in h
+            for (j,v) in h_i
+                push!(I,i)
+                push!(J,j)
+            end
         end
     end
     
@@ -434,24 +443,23 @@ function MathProgBase.eval_hesslag(
 
 
     tic()
-    h = EdgeSet{Int,Float64}()
-    hess_reverse(d.obj_tt,x,d.pvals,obj_factor,h)
-    for i=1:d.numConstr
-        hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i],h)
-    end
-
-    m = 1
-    for (i,row) in h
-        for (j,v) in row
-            H[m] = v
-            m += 1
+    m=1
+    h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
+    for (i,h_i) in h
+        for (j,v) in h_i
+            H[m] =v 
+            m+=1
         end
     end
-
-    ### or using BLAS function -- not sure
-    # obj_hess = sparse(d.laghess_I,d.laghess_J)
-    # 
-    # 
+    for i=1:d.numConstr
+        @inbounds h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
+        for (i,h_i) in h
+            for (j,v) in h_i
+                H[m] =v 
+                m+=1
+            end
+        end
+    end
     d.eval_hesslag_timer += toq()
 
     csc = sparse(d.laghess_I,d.laghess_J,H)
@@ -465,7 +473,7 @@ function MathProgBase.eval_hesslag(
     # @show d.jd.hess_I
     # @show d.jd.hess_J
     # @show jH
-    # jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
+    jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
     # @show jcsc
     # @show csc.colptr, jcsc.colptr
     # @show csc.rowval,jcsc.rowval

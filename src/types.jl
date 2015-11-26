@@ -76,13 +76,15 @@ type Tape{I,V}
 	liveVar::Dict{I,Set{I}}
 	imm2ord::Vector{V}
 	imm2ordlen::I
-	
+	h::Dict{I,Dict{I,V}}
+
 	nvar::I
 	nvnode::I
 	nnode::I
 	maxoperands::I
 	fstkmax::I
-	
+	nzg::I
+
 	function Tape()
 		return new(Vector{I}(),
 			Vector{V}(),
@@ -92,7 +94,8 @@ type Tape{I,V}
 			Vector{I}(),zero(I),
 			Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
 			Vector{V}(),zero(I),
-			zero(I),zero(I),zero(I),zero(I),zero(I))
+			Dict{I,Dict{I,V}}(),
+			zero(I),zero(I),zero(I),zero(I),zero(I),-one(I))
 	end
 
 	function Tape(data::Vector{I})
@@ -104,7 +107,8 @@ type Tape{I,V}
 			Vector{I}(),zero(I),
 			Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
 			Vector{V}(),zero(I),
-			zero(I),zero(I),zero(I),zero(I),zero(I))
+			Dict{I,Dict{I,V}}(),
+			zero(I),zero(I),zero(I),zero(I),zero(I),-one(I))
 		analysize_tape(this)
 		return this
 	end
@@ -115,6 +119,12 @@ function clean_hess_eset{I,V}(tape::Tape{I,V})
 	for (i,hi) in eset
 		for (j,v) in hi
 			eset[i][j] = 0.0
+		end
+	end
+	h = tape.h
+	for (i,hi) in h
+		for (j,v) in hi
+			h[i][j] = 0.0
 		end
 	end
 end
@@ -157,21 +167,17 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 	tape.nvar = length(iset)
 
 	# init
-	tape.imm1ord = Vector{V}(tape.nnode-1)
+	resize!(tape.imm1ord, tape.nnode-1)
 	tape.imm1ordlen = length(tape.imm1ord)
-	tape.imm2ord = Vector{V}(tape.imm2ordlen)
-	tape.imm2ordlen = length(tape.imm2ord)
-	tape.g_I = Vector{I}(tape.nvnode)
-	tape.g = Vector{V}(tape.nvnode)
-
+	resize!(tape.imm2ord, tape.imm2ordlen)
+	resize!(tape.g_I, tape.nvnode)
+	resize!(tape.g, tape.nvnode)
+	resize!(tape.stk, tape.nnode) 
 	tape.trlen = length(tape.tr)
-	tape.stk = Vector{V}(tape.nnode) 
-
+	tape.nzg = -1
 	# verification
 	assert(length(tape.imm1ord) == tape.nnode-1)
-	assert(length(tape.tr) == tape.nnode-1)
-
-	
+	assert(length(tape.tr) == tape.nnode-1)	
 end
 
 
