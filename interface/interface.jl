@@ -445,14 +445,14 @@ function MathProgBase.eval_hesslag(
     tic()
     m=1
     h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
-    for (i,h_i) in h
+    @inbounds for (i,h_i) in h
         for (j,v) in h_i
             H[m] =v 
             m+=1
         end
     end
-    for i=1:d.numConstr
-        @inbounds h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
+    @inbounds for i=1:d.numConstr
+        h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
         for (i,h_i) in h
             for (j,v) in h_i
                 H[m] =v 
