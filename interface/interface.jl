@@ -441,7 +441,7 @@ function MathProgBase.eval_hesslag(
         clean_hess_eset(d.constr_tt[i])
     end
 
-
+    #gc()
     tic()
     m=1
     h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)

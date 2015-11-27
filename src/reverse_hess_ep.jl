@@ -1,6 +1,21 @@
 #edge pusing algorithm for Hessian reverse AD
 
 
+function clean_hess_eset{I,V}(tape::Tape{I,V})
+	eset = tape.eset
+	for (i,hi) in eset
+		for (j,v) in hi
+			eset[i][j] = 0.0
+		end
+	end
+	h = tape.h
+	for (i,hi) in h
+		for (j,v) in hi
+			h[i][j] = 0.0
+		end
+	end
+end
+
 @inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
 	for i=1:n
 		@inbounds dest[i+d_offset] = src[i+s_offset]

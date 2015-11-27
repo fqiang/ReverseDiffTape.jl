@@ -114,21 +114,6 @@ type Tape{I,V}
 	end
 end
 
-function clean_hess_eset{I,V}(tape::Tape{I,V})
-	eset = tape.eset
-	for (i,hi) in eset
-		for (j,v) in hi
-			eset[i][j] = 0.0
-		end
-	end
-	h = tape.h
-	for (i,hi) in h
-		for (j,v) in hi
-			h[i][j] = 0.0
-		end
-	end
-end
-
 function analysize_tape{I,V}(tape::Tape{I,V})
 	tt = tape.tt
 	idx = one(I)
