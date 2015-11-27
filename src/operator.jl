@@ -260,12 +260,12 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		if exponent == 2.0
 			@inbounds imm[imm_i] = 2.0*base
 			t = base*base
-			@inbounds imm[imm_i+1] = t==0.0?0.0:t*log(base) #not sure if this is way to handle log(-negative)
+			@inbounds imm[imm_i+1] = base<=0.0?0.0:t*log(base) #not sure if this is way to handle log(-negative)
 			return t
 		else
 			@inbounds imm[imm_i] = exponent*base^(exponent-1.0)
 			t = base^exponent
-			@inbounds imm[imm_i+1] = t*log(base)
+			@inbounds imm[imm_i+1] = base<=0.0?0.0:t*log(base)
 			return t
 		end
 	end
@@ -391,7 +391,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 		@inbounds base = v[i]
 		if exponent == 2.0
 			t = base*base
-			t2 = log(base)
+			t2 = base<=0.0?0.0:log(base)
 			@inbounds imm[imm_i] = 2.0*base
 			@inbounds imm[imm_i+1] = t*t2
 			@inbounds imm[imm_i+2] = 2.0
@@ -400,7 +400,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
 			return 5,t
 		else
 			t = base^exponent
-			t2 = log(base)
+			t2 = base<=0.0?0.0:log(base)
 			t3 = base^(exponent-1.0)
 			@inbounds imm[imm_i] = exponent*base^t3
 			@inbounds imm[imm_i+1] = t*t2

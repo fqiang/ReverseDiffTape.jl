@@ -33,7 +33,7 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
 			idx += 1
 			idx += 1 #skip TYPE_O
 			# @show OP[oc], n, stklen-n+1, stklen
-			# @show OP[oc], stk[stklen-n+1:stklen]
+			# @show OP[oc], n, stk[stklen-n+1:stklen]
 			if(n==1)
 				# @show OP[oc]
 				@inbounds stk[stklen] = eval_1ord(OP[oc],stk[stklen],imm,immlen+1)

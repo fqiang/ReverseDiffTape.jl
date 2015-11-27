@@ -170,6 +170,10 @@ end
 	end
 end
 
+@inline function incr_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I,w::V)
+	eset[i1][i1] += w
+end
+
 @inline function incr{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,w::V)
 	# @show "incr",i1,i2, w
 	if i1>=i2 
@@ -288,11 +292,11 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 					if(i==p)
 						if(n==1) #1-ary operator
 							# @show "pushing 1-ary", OP[oc],tr[trlen]
-							incr(tape.eset,tr[trlen],tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
+							incr_diag(tape.eset,tr[trlen],imm[immlen-1]*imm[immlen-1]*w)
 						else  #2 or more
 							if(OP[oc]==:+ )
 								for k=trlen-n+1:trlen
-									incr(tape.eset,tr[k],tr[k],w)
+									incr_diag(tape.eset,tr[k],w)
 									# j0 = j + 1
 									for k0=k+1:trlen
 										incr(tape.eset,tr[k],tr[k0],w)
@@ -303,13 +307,13 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 							elseif(OP[oc] ==:-)
 								l = tr[trlen-1]
 								r = tr[trlen]
-								incr(tape.eset,l,l,w)
-								incr(tape.eset,r,r,w)
+								incr_diag(tape.eset,l,w)
+								incr_diag(tape.eset,r,w)
 								incr(tape.eset,l,r,-1.0*w)
 							elseif(OP[oc] == :*)
 								j = immlen - round(I,n+n*(n-1)/2)+1
 								for k=trlen-n+1:trlen
-									incr(tape.eset,tr[k],tr[k],imm[j]*imm[j]*w)
+									incr_diag(tape.eset,tr[k],imm[j]*imm[j]*w)
 									j0 = j + 1
 									for k0=k+1:trlen
 										incr(tape.eset,tr[k],tr[k0],imm[j]*imm[j0]*w)
@@ -322,8 +326,8 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 								r = tr[trlen]
 								dl = imm[immlen-4]
 								dr = imm[immlen-3]
-								incr(tape.eset,l,l,dl*dl*w)
-								incr(tape.eset,r,r,dr*dr*w)
+								incr_diag(tape.eset,l,dl*dl*w)
+								incr_diag(tape.eset,r,dr*dr*w)
 								incr(tape.eset,l,r,dl*dr*w)
 							end
 						end
@@ -369,7 +373,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 			#creating
 			if n==1
 				# @show "creating 1-ary", OP[oc],tr[trlen]
-				incr(tape.eset,tr[trlen],tr[trlen],adj*imm[immlen])
+				incr_diag(tape.eset,tr[trlen],adj*imm[immlen])
 			else
 				if(OP[oc] == :+ || OP[oc] ==:-)
 					#zero
@@ -388,9 +392,9 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 					dll = imm[immlen-2]
 					dlr = imm[immlen-1]
 					drr = imm[immlen]
-					incr(tape.eset,l,l,adj*dll)
+					incr_diag(tape.eset,l,adj*dll)
 					incr(tape.eset,l,r,adj*dlr)
-					incr(tape.eset,r,r,adj*drr)
+					incr_diag(tape.eset,r,adj*drr)
 				end
 			end
 
@@ -457,9 +461,9 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 					ii = tt[i+1]
 					jj = tt[j+1]
 					if(i!=j&&ii==jj)
-						tape.h[ii][jj] += 2.0*w*factor
+						incr_diag(tape.h,ii,2.0*w*factor)
 					else
-						tape.h[ii][jj] += w*factor
+						incr(tape.h,ii,jj,w*factor)
 					end
 				end
 			end
