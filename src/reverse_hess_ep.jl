@@ -293,12 +293,12 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
 							if(OP[oc]==:+ )
 								for k=trlen-n+1:trlen
 									incr(tape.eset,tr[k],tr[k],w)
-									j0 = j + 1
+									# j0 = j + 1
 									for k0=k+1:trlen
 										incr(tape.eset,tr[k],tr[k0],w)
-										j0 += 1
+										# j0 += 1
 									end
-									j += 1
+									# j += 1
 								end
 							elseif(OP[oc] ==:-)
 								l = tr[trlen-1]

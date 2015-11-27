@@ -6,46 +6,46 @@
 
 function report(m)
 
-eval_f = 0.0
-eval_g = 0.0
-eval_grad_f = 0.0
-eval_jac_g = 0.0
-eval_hesslag = 0.0
+    eval_f = 0.0
+    eval_g = 0.0
+    eval_grad_f = 0.0
+    eval_jac_g = 0.0
+    eval_hesslag = 0.0
 
-jeval_f2 = 0.0
-jeval_g2 = 0.0
-jeval_grad_f2 = 0.0
-jeval_jac_g2 = 0.0
-jeval_hesslag2 = 0.0
+    jeval_f2 = 0.0
+    jeval_g2 = 0.0
+    jeval_grad_f2 = 0.0
+    jeval_jac_g2 = 0.0
+    jeval_hesslag2 = 0.0
 
-for i=1:10
-	solve(m)
-	eval_f += m.internalModel.evaluator.eval_f_timer
-    eval_g += m.internalModel.evaluator.eval_g_timer
-    eval_grad_f += m.internalModel.evaluator.eval_grad_f_timer
-    eval_jac_g += m.internalModel.evaluator.eval_jac_g_timer
-    eval_hesslag += m.internalModel.evaluator.eval_hesslag_timer
-   
-   	jeval_f2 += m.internalModel.evaluator.jeval_f_timer
-    jeval_g2 += m.internalModel.evaluator.jeval_g_timer
-    jeval_grad_f2 += m.internalModel.evaluator.jeval_grad_f_timer
-    jeval_jac_g2 += m.internalModel.evaluator.jeval_jac_g_timer
-    jeval_hesslag2 += m.internalModel.evaluator.jeval_hesslag_timer
-end
-
-
-ratio_f2 = eval_f/jeval_f2
-ratio_g2 = eval_g/jeval_g2
-ratio_grad_f2 = eval_grad_f/jeval_grad_f2
-ratio_jac_g2 = eval_jac_g/jeval_jac_g2
-ratio_hesslag2 = eval_hesslag/jeval_hesslag2
+    for i=1:10
+    	solve(m)
+    	eval_f += m.internalModel.evaluator.eval_f_timer
+        eval_g += m.internalModel.evaluator.eval_g_timer
+        eval_grad_f += m.internalModel.evaluator.eval_grad_f_timer
+        eval_jac_g += m.internalModel.evaluator.eval_jac_g_timer
+        eval_hesslag += m.internalModel.evaluator.eval_hesslag_timer
+       
+       	jeval_f2 += m.internalModel.evaluator.jeval_f_timer
+        jeval_g2 += m.internalModel.evaluator.jeval_g_timer
+        jeval_grad_f2 += m.internalModel.evaluator.jeval_grad_f_timer
+        jeval_jac_g2 += m.internalModel.evaluator.jeval_jac_g_timer
+        jeval_hesslag2 += m.internalModel.evaluator.jeval_hesslag_timer
+    end
 
 
-# @show ratio_f2
-# @show ratio_g2
-# @show ratio_grad_f2
-# @show ratio_jac_g2
-# @show ratio_hesslag2
+    ratio_f2 = eval_f/jeval_f2
+    ratio_g2 = eval_g/jeval_g2
+    ratio_grad_f2 = eval_grad_f/jeval_grad_f2
+    ratio_jac_g2 = eval_jac_g/jeval_jac_g2
+    ratio_hesslag2 = eval_hesslag/jeval_hesslag2
+
+
+    # @show ratio_f2
+    # @show ratio_g2
+    # @show ratio_grad_f2
+    # @show ratio_jac_g2
+    # @show ratio_hesslag2
 
 return ratio_f2, ratio_g2, ratio_grad_f2, ratio_jac_g2, ratio_hesslag2
 

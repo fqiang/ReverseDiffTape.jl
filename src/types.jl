@@ -136,7 +136,7 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 			n = tt[idx]
 			idx += 2  #skip TYPE_O
 			tape.imm2ordlen += n + round(I,(n+1)*n/2)  #max estimation
-			tape.maxoperands<n?tape.maxoperands=n:nothing
+			tape.maxoperands = max(n,tape.maxoperands)
 			
 			tape.fstkmax = max(tape.fstkmax,length(istk))
 			t = Vector{I}() #slow but works
@@ -230,3 +230,113 @@ end
 function Base.show(io::IO,m::AD)
 	print(io, m.data)
 end
+
+
+##########################################################################################
+#
+# tape builder from a Julia Expr type
+#	tape memory property is initialized 
+#
+##########################################################################################
+
+#building tape with Julia expression
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
+	# @show expr
+	vset = Set{I}()
+	istk = Vector{I}()
+	tapeBuilder(expr,tape, pvals, vset, istk)
+	assert(length(tape.tr)==tape.nnode-1)
+	
+	tape.nvar = length(vset)
+	tape.imm1ordlen = tape.nnode -1
+	resize!(tape.imm1ord, tape.imm1ordlen)
+	resize!(tape.imm2ord, tape.imm2ordlen)
+
+	resize!(tape.stk, tape.nnode)
+	resize!(tape.g_I, tape.nvnode)
+	resize!(tape.g,tape.nvnode)
+	tape.nzg = -1  #-1 until call grad_structure
+	
+	# @show tape
+end
+
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},vset::Set{I},istk::Vector{I})
+	tt = tape.tt
+	head = expr.head
+	if(head == :ref)  #a JuMP variable
+		assert(length(expr.args) == 2)
+		vidx = expr.args[2]
+		push!(tt,TYPE_V)
+		push!(tt,vidx)
+		push!(tt,TYPE_V)
+		
+		push!(istk,length(tt)-2)
+		push!(vset,vidx)
+		tape.nvnode += 1
+		tape.nnode += 1
+	elseif(head == :call)
+		# @show expr.args[2]
+		op = expr.args[1]
+		n = length(expr.args)-1
+		assert(typeof(op)==Symbol)
+		if(op==:+ && n<2) 
+			#simpliy the expression eliminate 1-ary + node
+			tapeBuilder(expr.args[2],tape,pvals,vset,istk)
+		else
+			for i in 2:length(expr.args)
+				tapeBuilder(expr.args[i],tape,pvals,vset,istk)
+			end
+			push!(tt,TYPE_O)
+			push!(tt,S_TO_OC[op])
+			push!(tt,n)
+			push!(tt,TYPE_O)
+
+			tape.fstkmax = max(tape.fstkmax,length(istk))
+			t = Vector{I}()
+			for i=1:n
+				cidx = pop!(istk)
+				push!(t,cidx)
+			end
+			append!(tape.tr,reverse!(t))
+			push!(istk,length(tt)-3)
+			tape.nnode += 1
+			tape.maxoperands = max(length(expr.args)-1, tape.maxoperands)
+			tape.imm2ordlen += n + round(I,n*(n+1)/2)
+			# tape.eset[length(tt)-3] = Dict{I,V}()
+			# @show length(tt) - 3
+			if op==:+ && n<2
+				@show expr
+				assert(false)
+			end
+		end
+    else
+    	println("error !")
+    	dump(expr)
+    	assert(false)
+    end
+    nothing
+end
+
+function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Array{V,1},vset::Set{I},istk::Vector{I}) #a JuMP parameter
+	tt = tape.tt
+	push!(tt,TYPE_P)
+	push!(tt,length(pvals)+1)
+	push!(tt,TYPE_P)
+
+	push!(istk,length(tt)-2)
+	push!(pvals,expr)
+	tape.nnode += 1
+end
+
+##########################################################################################
+#
+# tape builder from types
+#
+##########################################################################################
+function tapeBuilder{I}(data::Array{I,1})
+	tape = Tape{I,Float64}(data)
+	return tape
+end
+
+##########################################################################################
+

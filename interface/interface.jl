@@ -2,7 +2,6 @@
 module TapeInterface
 
 using ReverseDiffTape
-
 import MathProgBase
 
 const EPS=1e-10
@@ -170,10 +169,12 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
 	tapeBuilder(objexpr,d.obj_tt,d.pvals)
 
     for i =1:1:d.numConstr
-	   conexpr = MathProgBase.constr_expr(jd,i)
+       conexpr = MathProgBase.constr_expr(jd,i)
        # @show conexpr.args[1]
+       # @show dump(conexpr)
+       j = length(conexpr.args)==3?1:3
        tt = Tape{Int,Float64}()
-       tapeBuilder(conexpr.args[1],tt,d.pvals)
+       tapeBuilder(conexpr.args[j],tt,d.pvals)
        push!(d.constr_tt,tt)
        # @show d.constr_tt[i]
     end
@@ -441,7 +442,6 @@ function MathProgBase.eval_hesslag(
         clean_hess_eset(d.constr_tt[i])
     end
 
-    #gc()
     tic()
     m=1
     h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
