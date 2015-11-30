@@ -319,7 +319,7 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     tic()
     J_len = 0
     for i = 1:d.numConstr
-        g = grad_reverse(d.constr_tt[i],x,d.pvals)
+        @inbounds g = grad_reverse(d.constr_tt[i],x,d.pvals)
         append_array(J,J_len,g,0,length(g))
         J_len += length(g)
     end

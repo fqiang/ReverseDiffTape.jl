@@ -1,5 +1,5 @@
 #temp2.jl
-include("test_media.jl") 
+include("test_small.jl") 
 using ReverseDiffTape
 jd = m.internalModel.evaluator.jd;
 ex=MathProgBase.obj_expr(jd);
@@ -7,8 +7,14 @@ ex=MathProgBase.obj_expr(jd);
 tt = Tape{Int,Float64}();
 p = Vector{Float64}();
 tapeBuilder(ex,tt,p);
-x=rand(m.numCols);
+x=ones(m.numCols);
 
+ReverseDiffTape.grad_structure(tt)
+g=zeros(length(x))
+ReverseDiffTape.grad_reverse(tt,x,p,g)
+
+jg=zeros(length(x))
+MathProgBase.eval_grad_f(jd,jg,x)
 
 Profile.clear_malloc_data()
 @time ReverseDiffTape.feval(tt,x,p)
