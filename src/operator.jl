@@ -27,17 +27,24 @@ function differentiate(x::SymbolParameter{:abs},args,wrt)
 	return :($x>0?$xp:-$xp)
 end
 
+function differentiate(x::SymbolParameter{:abs2},args,wrt)
+	x = args[1]
+	xp = differentiate(:(x^2),wrt)
+	return :($x>0?$xp:-$xp)
+end
+
+
 for sym in OP
 	(dx,dy) = differentiate("x $(sym) y",[:x,:y])
 	# @show dx, dy
 	dxx = differentiate(dx,:x)
-	dxxi = dxx == 0? true:false
+	dxxi = isa(dxx,Number)
 	# @show dxx
 	dxy = differentiate(dx,:y)
-	dxyi = dxy == 0? true:false
+	dxyi = isa(dxy,Number)
 	# @show dxy
 	dyy = differentiate(dy,:y)
-	dyyi = dyy == 0? true:false
+	dyyi = isa(dyy,Number)
 	# @show dyy
 	# @show sym,dxx,dxy,dyy
 	# @show sym,dxxi,dxyi,dyyi
@@ -49,9 +56,9 @@ for (sym, dx) = symbolic_derivatives_1arg()
 	push!(OP,sym)
 	try 
 		dxx = differentiate(dx,:x)
-		dxxi = dxx == 0? true:false
-		S_TO_DIFF_FLAG[sym] = [dxxi]
+		dxxi = isa(dxx,Number)
 		S_TO_DIFF[sym] = [dx,dxx]
+		S_TO_DIFF_FLAG[sym] = [dxxi]
 	catch e
 		pop!(OP)
 		warn(e)
