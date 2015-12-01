@@ -60,13 +60,6 @@ p = Array{Float64,1}()
 	feval(tt,x,p)
 #############
 
-imm = Array{Float64,1}()
-@time ReverseDiffTape.forward_pass(tt,x,p,imm)
-g=Array{Tuple{IDX_TYPE,VV_TYPE},1}()
-ReverseDiffTape.reverse_pass(tt,imm,g)
-ReverseDiffTape.grad_structure(tt,ilist)
-
-
 sum{ 0.5*h*(u[i+1]^2 + u[i]^2) + 0.5*alpha*h*(cos(    t[i+1]) + cos(t[i])), i = 1:ni}
 
 # julia> ex.args

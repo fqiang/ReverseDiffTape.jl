@@ -27,12 +27,6 @@ function differentiate(x::SymbolParameter{:abs},args,wrt)
 	return :($x>0?$xp:-$xp)
 end
 
-function differentiate(x::SymbolParameter{:abs2},args,wrt)
-	x = args[1]
-	xp = differentiate(:(x^2),wrt)
-	return :($x>0?$xp:-$xp)
-end
-
 
 for sym in OP
 	(dx,dy) = differentiate("x $(sym) y",[:x,:y])

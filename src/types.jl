@@ -252,7 +252,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
 	resize!(tape.imm1ord, tape.imm1ordlen)
 	resize!(tape.imm2ord, tape.imm2ordlen)
 
-	resize!(tape.stk, tape.nnode)
+	resize!(tape.stk, tape.nnode) #max stack size
 	resize!(tape.g_I, tape.nvnode)
 	resize!(tape.g,tape.nvnode)
 	tape.nzg = -1  #-1 until call grad_structure
