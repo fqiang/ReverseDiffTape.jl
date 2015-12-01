@@ -4,6 +4,7 @@ using Calculus
 
 # write your own tests here
 using FactCheck
+import Base.count
 
 global y1 = 1.1
 global y2 = 2.2
