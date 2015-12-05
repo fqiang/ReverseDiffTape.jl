@@ -2,4 +2,5 @@ julia 0.4
 Calculus
 Logging
 Lazy
+NaNMath
 FactCheck
