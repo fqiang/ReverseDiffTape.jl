@@ -56,7 +56,7 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
     return stk[1]
 end
 
-function reverse_pass_1ord{I,V}(tape::Tape{I,V})
+function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
     # @show imm
     # assert(length(imm) == tape.nnode -1)
     tt = tape.tt
@@ -66,10 +66,9 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})
     
     adjs = tape.stk
     adjlen = 1
-    adjs[adjlen] = one(V)
+    @inbounds adjs[adjlen] = one(V) #initial value
 
     nnz = zero(I)
-
     @inbounds while(idx > 0)
         ntype = tt[idx]
         idx -= 1
@@ -97,6 +96,7 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})
 end
 
 function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing order
+    assert(tape.nzg==-1)
     tt = tape.tt
     idx = length(tt)
     nnz = zero(I)
@@ -114,28 +114,27 @@ function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing
         end
     end
     tape.nzg = tape.nvnode
-    assert(length(tape.g) == tape.nzg && nnz==tape.nzg)
+    assert(length(tape.g_I) == tape.nvnode == nnz)
+    return tape.nzg
 end
 
 #Interface function
-function grad_structure{I,V}(tape::Tape{I,V})  #repeat version
-    grad_struct(tape)
-    return tape.g_I
+function grad_structure{I,V}(tape::Tape{I,V})  
+    return grad_struct(tape)
 end
 
 function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}) #sparse version
     forward_pass_1ord(tape,vvals,pvals)
-    reverse_pass_1ord(tape)
-    return tape.g
+    reverse_pass_1ord(tape) 
 end
 
-function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, g::Vector{V})  #dense version
-    # assert(length(tape.g_I)==tape.nvnode)
-    # assert(length(tape.g)==tape.nvnode)
-    grad_reverse(tape,vvals,pvals)
-    for i = 1:length(tape.g_I)
-        @inbounds t = tape.g[i]
-        @inbounds g[tape.g_I[i]] += t
-    end
-    nothing
-end
+# function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, g::Vector{V})  #dense version
+#     # assert(length(tape.g_I)==tape.nvnode)
+#     # assert(length(tape.g)==tape.nvnode)
+#     grad_reverse(tape,vvals,pvals)
+#     for i = 1:length(tape.g_I)
+#         @inbounds t = tape.g[i]
+#         @inbounds g[tape.g_I[i]] += t
+#     end
+#     nothing
+# end

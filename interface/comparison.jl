@@ -85,4 +85,4 @@ for i=2:1:TIMES
 end
 
 m
-matrix
+@show matrix

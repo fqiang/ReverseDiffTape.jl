@@ -21,6 +21,15 @@ function count(h)
 	return c
 end
 
+function to_dense_array(sparse)
+	dense = Vector{Float64}(length(sparse))
+	fill!(dense,0.0)
+	for i=1:length(sparse)
+		dense[i] = sparse[i]
+	end
+	return dense
+end
+
 ## Test for forward function evaluation
 facts("Function evaluataion ") do
 	p = Vector{Float64}()
@@ -51,8 +60,10 @@ facts("Reverse gradient") do
 	c=sin(x1)*cos(x2)
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
+
 
 	@fact tt.nvar --> 2
 	@fact length(tt.g_I) --> tt.nvnode
@@ -69,8 +80,8 @@ facts("Reverse gradient") do
 	c = x1^p3
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
 
 	@fact tt.nvar --> 1
 	@fact length(tt.g_I) --> tt.nvnode
@@ -88,8 +99,8 @@ facts("Reverse gradient") do
 	c = x1^p2
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
 
 	@fact tt.nvar --> 1
 	@fact length(tt.g_I) --> tt.nvnode
@@ -106,8 +117,9 @@ facts("Reverse gradient") do
 	c = x1*x2*x3*x4
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
+
 
 	@fact tt.nvar --> 4
 	@fact length(tt.g_I) --> tt.nvnode
@@ -124,8 +136,9 @@ facts("Reverse gradient") do
 	c = sin(x1*x2*x3*x4)
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
+
 
 	@fact tt.nvar --> 4
 	@fact length(tt.g_I) --> tt.nvnode
@@ -141,8 +154,9 @@ facts("Reverse gradient") do
 	c = cos(x1*x2*x3*x4)
 	tt = tapeBuilder(c.data)
 	grad_structure(tt)
-	ag = Vector{Float64}(tt.nvar)
-	grad_reverse(tt,x,p,ag)
+	grad_reverse(tt,x,p)
+	ag = to_dense_array(sparsevec(tt.g_I, tt.g,tt.nvar))
+
 
 	@fact tt.nvar --> 4
 	@fact length(tt.g_I) --> tt.nvnode

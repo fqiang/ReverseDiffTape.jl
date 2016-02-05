@@ -16,11 +16,6 @@ function clean_hess_eset{I,V}(tape::Tape{I,V})
     end
 end
 
-@inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
-    for i=1:n
-        @inbounds dest[i+d_offset] = src[i+s_offset]
-    end
-end
 
 @inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
     # @show i1

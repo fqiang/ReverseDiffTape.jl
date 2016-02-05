@@ -14,59 +14,67 @@ const TYPE_O = 3
 # MyArray type encapsulate a julia array 1-dim
 #
 ##############################################################################
-importall Base
+# importall Base
 
-type MyArray{V}
-    a::Array{V,1}
-    len::Int
-    maxlen::Int
-end
+# type MyArray{V}
+#     a::Array{V,1}
+#     len::Int
+#     maxlen::Int
+# end
 
-call{V}(::Type{MyArray{V}},max_sz::Int) = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
+# call{V}(::Type{MyArray{V}},max_sz::Int) = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
 
-@inline function push!{V}(a::MyArray{V},v::V)
-    # println("push!, a, v")
-    # @show v
-    # @show a
-    # assert(a.len+1<=a.maxlen)
-    a.len += 1
-    @inbounds a.a[a.len] = v
-    # @show a
-end
+# @inline function push!{V}(a::MyArray{V},v::V)
+#     # println("push!, a, v")
+#     # @show v
+#     # @show a
+#     # assert(a.len+1<=a.maxlen)
+#     a.len += 1
+#     @inbounds a.a[a.len] = v
+#     # @show a
+# end
 
-@inline function resize!{V}(a::MyArray{V},sz::Int)
-    assert(sz<=a.maxlen)
-    a.len = sz
-end
+# @inline function resize!{V}(a::MyArray{V},sz::Int)
+#     assert(sz<=a.maxlen)
+#     a.len = sz
+# end
 
-@inline function length(a::MyArray)
-    return a.len
-end
+# @inline function length(a::MyArray)
+#     return a.len
+# end
 
-@inline function getindex{V}(a::MyArray{V},i::Int)
-    # assert(i<=a.maxlen)
-    @inbounds return a.a[i]
-end
+# @inline function getindex{V}(a::MyArray{V},i::Int)
+#     # assert(i<=a.maxlen)
+#     @inbounds return a.a[i]
+# end
 
-@inline function setindex!{V}(a::MyArray{V},v::V,i::Int)
-    # assert(i<=a.maxlen)
-    @inbounds a.a[i] = v
-end
+# @inline function setindex!{V}(a::MyArray{V},v::V,i::Int)
+#     # assert(i<=a.maxlen)
+#     @inbounds a.a[i] = v
+# end
 
-endof(a::MyArray) = length(a)
+# endof(a::MyArray) = length(a)
 
 
-function Base.show(io::IO,m::MyArray)
-    println(io,m.a[1:m.len],",",m.len,",",m.maxlen)
-end
+# function Base.show(io::IO,m::MyArray)
+#     println(io,m.a[1:m.len],",",m.len,",",m.maxlen)
+# end
 
 ##############################################################################
 
 type Tape{I,V}
     tt::Vector{I}
     stk::Vector{V}
+
     g_I::Vector{I}
     g::Vector{V}
+    nzg::I
+    
+    h_I::Vector{I}
+    h_J::Vector{I}
+    hess::Vector{V}
+    nzh::I
+
     imm1ord::Vector{V}
     imm1ordlen::I
 
@@ -84,32 +92,50 @@ type Tape{I,V}
     nnode::I
     maxoperands::I
     fstkmax::I
-    nzg::I
+    # nzg::I
 
     function Tape()
-        return new(Vector{I}(),
-            Vector{V}(),
-            Vector{I}(),
-            Vector{V}(),
+        return new(
+            Vector{I}(),  #tt
+            Vector{V}(),  #stack
+            
+            Vector{I}(),  #grad_I
+            Vector{V}(),  #grad value
+            -one(I),      #grad indicator
+            
+            Vector{I}(),  #hess_I
+            Vector{I}(),  #hess_J
+            Vector{V}(),  #hess value
+            -one(I),      #hess indicator
+
             Vector{V}(),zero(I),
             Vector{I}(),zero(I),
             Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
             Vector{V}(),zero(I),
             Dict{I,Dict{I,V}}(),
-            zero(I),zero(I),zero(I),zero(I),zero(I),-one(I))
+            zero(I),zero(I),zero(I),zero(I),zero(I))
     end
 
     function Tape(data::Vector{I})
-        this = new(data,
-            Vector{V}(),
-            Vector{I}(),
-            Vector{V}(),
+        this = new(
+            data,         #tt
+            Vector{V}(),  #stack
+            
+            Vector{I}(),  #grad_I
+            Vector{V}(),  #grad value
+            -one(I),      #grad indicator
+            
+            Vector{I}(),  #hess_I
+            Vector{I}(),  #hess_J
+            Vector{V}(),  #hess value
+            -one(I),      #hess indicator
+
             Vector{V}(),zero(I),
             Vector{I}(),zero(I),
             Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
             Vector{V}(),zero(I),
             Dict{I,Dict{I,V}}(),
-            zero(I),zero(I),zero(I),zero(I),zero(I),-one(I))
+            zero(I),zero(I),zero(I),zero(I),zero(I))
         analysize_tape(this)
         return this
     end
@@ -160,7 +186,7 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
     tape.trlen = length(tape.tr)
-    tape.nzg = -1
+    # tape.nzg = -1
     # verification
     assert(length(tape.imm1ord) == tape.nnode-1)
     assert(length(tape.tr) == tape.nnode-1) 
@@ -256,7 +282,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
     resize!(tape.stk, tape.nnode) #max stack size
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g,tape.nvnode)
-    tape.nzg = -1  #-1 until call grad_structure
+    # tape.nzg = -1  #-1 until call grad_structure
     
     # @show tape
 end
