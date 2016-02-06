@@ -16,8 +16,12 @@ export
 #Objects
     AD, AD_O, AD_P, AD_V, EdgeSet, Tape,
 #Functions
+    append_array,
     tapeBuilder, #building tape from Julia expression 
-    feval, grad_reverse, hess_reverse, grad_structure, hess_structure_lower, clean_hess_eset,append_array
+    feval, 
+    grad_reverse,  grad_structure,
+    hess_reverse, hess_structure_lower, clean_hess_eset,
+    hess_structure2
 
 
 @inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
@@ -32,5 +36,6 @@ include("./operator.jl")
 include("./func_eval.jl")
 include("./reverse_grad.jl")
 include("./reverse_hess_ep.jl")
+include("./reverse_hess_ep2.jl")
 
 end # module
