@@ -62,6 +62,17 @@ const TYPE_O = 3
 
 ##############################################################################
 
+type mPair{I,V}
+    i::I
+    w::V
+    function mPair()
+        return new(zero(I),0.0)  #not valid entry
+    end
+    function mPair(idx,ww)
+        return new(idx,ww)
+    end
+end
+
 type Tape{I,V}
     tt::Vector{I}
     stk::Vector{V}
@@ -76,7 +87,7 @@ type Tape{I,V}
     nzh::I
     node_idx_to_number::SparseMatrixCSC{I,I}
     live_vars::Vector{Vector{I}}  #node number -> indexes list on tape
-    bh::Vector{Vector{Tuple{I,V}}}  #big hessian matrix for everybody
+    bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
 
     imm1ord::Vector{V}
@@ -113,7 +124,7 @@ type Tape{I,V}
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{I}}(),  #live vars 
-            Vector{Vector{Tuple{I,V}}}(),  #big hessian matrix
+            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
 
             Vector{V}(), #imm1ord
@@ -144,7 +155,7 @@ type Tape{I,V}
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{I}}(),  #live vars 
-            Vector{Vector{Tuple{I,V}}}(),  #big hessian matrix
+            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
 
             Vector{V}(),zero(I),
@@ -211,11 +222,11 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
     tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
-    tape.bh = Vector{Vector{Tuple{Int,Float64}}}(tape.nnode+tape.nvar);
+    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar);
     tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
     for i=1:tape.nnode+tape.nvar 
         tape.live_vars[i] = Vector{Int}() 
-        tape.bh[i] = Vector{Tuple{Int,Float64}}();
+        tape.bh[i] = Vector{mPair{Int,Float64}}();
     end
 
     # init
@@ -373,7 +384,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},istk::Ve
             # tape.imm2ordlen += n + round(I,n*(n+1)/2)
             # tape.eset[length(tt)-3] = Dict{I,V}()
             # @show length(tt) - 3
-            if op==:+ && n<2
+            if (op==:+ || op ==:-) && n<2
                 @show expr
                 assert(false)
             end
