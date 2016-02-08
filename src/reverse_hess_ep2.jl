@@ -1,86 +1,13 @@
 #edge pusing algorithm for Hessian reverse AD
 
-
-# function clean_hess_eset{I,V}(tape::Tape{I,V})
-#     eset = tape.eset
-#     for (i,hi) in eset
-#         for (j,v) in hi
-#             eset[i][j] = 0.0
-#         end
-#     end
-#     h = tape.h
-#     for (i,hi) in h
-#         for (j,v) in hi
-#             h[i][j] = 0.0
-#         end
-#     end
-# end
-
-
-# @inline function push_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I)
-#     # @show i1
-#     # assert(haskey(eset,i1))
-#     haskey(eset,i1)?nothing:eset[i1]=Dict{I,V}()
-#     eset[i1][i1] = 0.0
-# end
-
-# @inline function push_edge{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
-#     # @show i1,i2
-#     # assert(i1!=i2)
-#     # @show "push_edge", i1,i2
-#     if i1<i2
-#         # assert(haskey(eset,i2))
-#         haskey(eset,i2)?nothing:eset[i2]=Dict{I,V}()
-#         eset[i2][i1] = 0.0
-#     else
-#         # assert(haskey(eset,i1))
-#         haskey(eset,i1)?nothing:eset[i1]=Dict{I,V}()
-#         eset[i1][i2] = 0.0
-#     end
-# end
-
-# @inline function push_live_var{I}(liveVar::Dict{I,Set{I}},i1::I,i2::I)
-#     # assert(haskey(liveVar,i1))
-#     haskey(liveVar,i1)?nothing:liveVar[i1]=Set{I}()
-#     push!(liveVar[i1],i2)
-# end
-
-
-
-# @inline function getw{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I)
-#     # @show "in w",i1,i2
-#     if(i1>=i2)
-#         # assert(haskey(eset,i1))
-#         # assert(haskey(eset[i1],i2))
-#         return eset[i1][i2]
-#     else
-#         # assert(haskey(eset,i2))
-#         # assert(haskey(eset[i2],i1))
-#         return eset[i2][i1]
-#     end
-# end
-
-# @inline function incr_diag{I,V}(eset::Dict{I,Dict{I,V}},i1::I,w::V)
-#     eset[i1][i1] += w
-# end
-
-# @inline function incr{I,V}(eset::Dict{I,Dict{I,V}},i1::I,i2::I,w::V)
-#     # @show "incr",i1,i2, w
-#     if i1>=i2 
-#         # assert(haskey(eset,i1))
-#         # assert(haskey(eset[i1],i2))
-#         eset[i1][i2]+=w 
-#     else
-#         # assert(haskey(eset,i2))
-#         # assert(haskey(eset[i2],i1))
-#         eset[i2][i1]+=w
-#     end
-# end
-
-
 function cleanup_structure2(tape)
-    tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
-    for i=1:tape.nnode+tape.nvar tape.live_vars[i] = Vector{Int}() end
+    assert(length(tape.live_vars) == length(tape.bh) == length(tape.bh_idxes) == tape.nnode+tape.nvar)  
+    for i=1:tape.nnode+tape.nvar 
+        tape.live_vars[i] = Vector{Int}() 
+        tape.bh[i] = Vector{Tuple{Int,Float64}}()
+    end
+    fill!(tape.bh_idxes,zero(Int))
+
     tape.h_I = Vector{I}() #hess_I
     tape.h_J = Vector{I}() #hess_J
     tape.hess = Vector{Float64}() #hess value
@@ -91,7 +18,7 @@ end
     # @show to,from
     # @show tape.node_idx_to_number
     # @show tape.live_vars
-    @inbounds push!(tape.live_vars[to],from)
+    # @inbounds push!(tape.live_vars[to],from)
     @inbounds push!(tape.bh[to],(from,0.0))    
     # @show tape.bh
 end
@@ -122,9 +49,9 @@ function hess_struct2{I,V}(tape::Tape{I,V})
             #pushing edges pointing to this v node to the independent variables below
             @inbounds i_num = tape.node_idx_to_number[i_idx]
             assert(i_num!=0 && v_idx <= tape.nvar)
-            @inbounds lvi = tape.live_vars[i_num]
+            @inbounds lvi = tape.bh[i_num]
             for j = 1:length(lvi)
-                @inbounds p_idx = lvi[j]
+                @inbounds (p_idx,w) = lvi[j]
                 @inbounds p_num = tape.node_idx_to_number[p_idx]
                 if p_idx == i_idx
                     push_edge(tape,v_idx,v_idx)
@@ -147,9 +74,9 @@ function hess_struct2{I,V}(tape::Tape{I,V})
             @inbounds i_num = tape.node_idx_to_number[i_idx]  #node i's number
             assert(i_num!=0)
             idx -= 1
-            @inbounds lvi = tape.live_vars[i_num]
+            @inbounds lvi = tape.bh[i_num]
             for j = 1:length(lvi)
-                @inbounds p_idx = lvi[j]  #index of node p
+                @inbounds (p_idx,w) = lvi[j]  #index of node p
                 @inbounds p_num = tape.node_idx_to_number[p_idx]
                 assert(p_num!=0)
                 if(p_idx == i_idx)
@@ -241,9 +168,10 @@ function hess_struct2{I,V}(tape::Tape{I,V})
     end #end while loop
 
     for i=1:tape.nvar
-        @inbounds lvi = tape.live_vars[i] 
-        for j in lvi
-            if(j<=tape.nvar)
+        @inbounds lvi = tape.bh[i] 
+        for j = 1:length(lvi)
+            @inbounds (v_idx,w) = lvi[1]
+            if(v_idx<=tape.nvar)
                 push!(tape.h_I,i)
                 push!(tape.h_J,j)
             end
@@ -307,6 +235,10 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
     return stk[1]
 end
 
+# @inline function update_diag(tape,v_idx,w)
+#     push!(tape.bh[v_idx]
+# end
+
 # function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
 #     tr = tape.tr
 #     tt = tape.tt
@@ -341,10 +273,11 @@ end
 #             i_idx = idx + tape.nvar
 #             idx -= 1
 #             @inbounds i_num = tape.node_idx_to_number[i_idx]
-#             @inbounds lvi = tape.live_vars[i_num]
+#             @inbounds lvi = tape.bh[i_num]
 #             for j = 1:length(lvi)
-#                 @inbounds p_idx = lvi[j]
+#                 @inbounds (p_idx,w) = lvi[j]
 #                 @inboudns p_num = tape.node_idx_to_number[p_idx]
+#                 if p_idx == i_idx
 
 
 #             # @show idx, vidx

@@ -74,9 +74,10 @@ type Tape{I,V}
     h_J::Vector{I}
     hess::Vector{V}
     nzh::I
-    node_idx_to_number::SparseMatrixCSC{Int,Int}
-    live_vars::Vector{Vector{Int}}  #node number -> indexes list on tape
-    bh::Vector{Vector{Tuple{Int,Float64}}}  #big hessian matrix for everybody
+    node_idx_to_number::SparseMatrixCSC{I,I}
+    live_vars::Vector{Vector{I}}  #node number -> indexes list on tape
+    bh::Vector{Vector{Tuple{I,V}}}  #big hessian matrix for everybody
+    bh_idxes::Vector{I}   #current horizontal indicies
 
     imm1ord::Vector{V}
     imm1ordlen::I
@@ -111,8 +112,9 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
-            Vector{Vector{Int}}(),  #live vars 
-            Vector{Vector{Tuple{Int,Float64}}}(),
+            Vector{Vector{I}}(),  #live vars 
+            Vector{Vector{Tuple{I,V}}}(),  #big hessian matrix
+            Vector{I}(),    #current horizontal indicies
 
             Vector{V}(), #imm1ord
             zero(I),     #1st order stack length
@@ -141,8 +143,9 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
-            Vector{Vector{Int}}(),  #live vars 
-            Vector{Vector{Tuple{Int,Float64}}}(),
+            Vector{Vector{I}}(),  #live vars 
+            Vector{Vector{Tuple{I,V}}}(),  #big hessian matrix
+            Vector{I}(),    #current horizontal indicies
 
             Vector{V}(),zero(I),
             Vector{I}(),zero(I),
@@ -209,6 +212,7 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     
     tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
     tape.bh = Vector{Vector{Tuple{Int,Float64}}}(tape.nnode+tape.nvar);
+    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
     for i=1:tape.nnode+tape.nvar 
         tape.live_vars[i] = Vector{Int}() 
         tape.bh[i] = Vector{Tuple{Int,Float64}}();
