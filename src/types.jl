@@ -76,6 +76,7 @@ type Tape{I,V}
     nzh::I
     node_idx_to_number::SparseMatrixCSC{Int,Int}
     live_vars::Vector{Vector{Int}}  #node number -> indexes list on tape
+    bh::Vector{Vector{Tuple{Int,Float64}}}  #big hessian matrix for everybody
 
     imm1ord::Vector{V}
     imm1ordlen::I
@@ -111,6 +112,7 @@ type Tape{I,V}
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{Int}}(),  #live vars 
+            Vector{Vector{Tuple{Int,Float64}}}(),
 
             Vector{V}(), #imm1ord
             zero(I),     #1st order stack length
@@ -140,6 +142,7 @@ type Tape{I,V}
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{Int}}(),  #live vars 
+            Vector{Vector{Tuple{Int,Float64}}}(),
 
             Vector{V}(),zero(I),
             Vector{I}(),zero(I),
@@ -197,14 +200,19 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     tape.nvar = v_idx_max
     node_idxes = node_idxes + tape.nvar #shift nodes up to make room for independent nodes
     node_numbers = node_numbers + tape.nvar #shift  up 
+    
     @show node_idxes,node_numbers
     prepend!(node_numbers,collect(1:tape.nvar))    #top tape.nvar is the independent nodes
     prepend!(node_idxes,collect(1:tape.nvar))
     @show node_idxes,node_numbers
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
+    
     tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
-    for i=1:tape.nnode+tape.nvar tape.live_vars[i] = Vector{Int}() end
-    # fill!(tape.live_vars,Vector{Int}())
+    tape.bh = Vector{Vector{Tuple{Int,Float64}}}(tape.nnode+tape.nvar);
+    for i=1:tape.nnode+tape.nvar 
+        tape.live_vars[i] = Vector{Int}() 
+        tape.bh[i] = Vector{Tuple{Int,Float64}}();
+    end
 
     # init
     resize!(tape.imm1ord, tape.nnode-1)
