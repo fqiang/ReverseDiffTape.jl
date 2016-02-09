@@ -1,7 +1,8 @@
 #temp2.jl
 include("test_small.jl") 
 using ReverseDiffTape
-jd = m.internalModel.evaluator.jd;
+
+jd = JuMPNLPEvaluator(m)
 ex=MathProgBase.obj_expr(jd);
 
 tt = Tape{Int,Float64}();
@@ -10,8 +11,15 @@ tapeBuilder(ex,tt,p);
 x=ones(m.numCols);
 
 ReverseDiffTape.grad_structure(tt)
-g=zeros(length(x))
-ReverseDiffTape.grad_reverse(tt,x,p,g)
+ReverseDiffTape.grad_reverse(tt,x,p)
+g_sp = sparsevec(tt.g_I,tt.g,length(x))
+g = Vector{Float64}(m.numCols)
+for i = 1:length(g)
+    @inbounds g[i] = g_sp[i]
+end
+
+ReverseDiffTape.hess_structure2(tt)
+ReverseDiffTape.hess_reverse2(tt,x,p)
 
 jg=zeros(length(x))
 MathProgBase.eval_grad_f(jd,jg,x)
@@ -191,9 +199,20 @@ x=Vector{Float64}()
 p=Vector{Float64}()
 x1=AD_V(x,1.1)
 x2=AD_V(x,2.2)
-x3=AD_V(x,1.1)
-x4=AD_V(x,2.2)
+x3=AD_V(x,3.3)
+x4=AD_V(x,4.4)
 p2=AD_P(p,2.0)
+p5=AD_P(p,0.5)
+
+
+
+y=x1^p2 + x2^p2
+tt = tapeBuilder(y.data)
+@time hess_structure2(tt)
+@time hess_reverse2(tt,x,p)
+
+
+
 y=x1*x2*x3
 tt = tapeBuilder(y.data)
 @time hess_structure2(tt)
