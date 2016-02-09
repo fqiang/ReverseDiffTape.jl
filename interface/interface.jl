@@ -378,24 +378,30 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
 
     # veset = Dict{Int,Set{Int}}()
     # println("obj ",MathProgBase.obj_expr(d.jd))
-    h =hess_structure_lower(d.obj_tt)
+    hess_structure2(d.obj_tt)
+    append!(I,d.obj_tt.h_I)
+    append!(J,d.obj_tt.h_J)
 
-    for (i,h_i) in h
-        for (j,v) in h_i
-            push!(I,i)
-            push!(J,j)
-        end
-    end
+    # h = hess_structure_lower(d.obj_tt)
+    # for (i,h_i) in h
+    #     for (j,v) in h_i
+    #         push!(I,i)
+    #         push!(J,j)
+    #     end
+    # end
 
     for i=1:d.numConstr
         # println(i," ",MathProgBase.constr_expr(d.jd,i))
-        @inbounds h = hess_structure_lower(d.constr_tt[i])
-        for (i,h_i) in h
-            for (j,v) in h_i
-                push!(I,i)
-                push!(J,j)
-            end
-        end
+        hess_structure2(d.constr_tt[i])
+        append!(I,d.constr_tt[i].h_I)
+        append!(J,d.constr_tt[i].h_J)
+        # @inbounds h = hess_structure_lower(d.constr_tt[i])
+        # for (i,h_i) in h
+        #     for (j,v) in h_i
+        #         push!(I,i)
+        #         push!(J,j)
+        #     end
+        # end
     end
     
     assert(length(I) == length(J))
@@ -442,27 +448,48 @@ function MathProgBase.eval_hesslag(
     assert(length(H) == length(d.laghess_I))
     
     #cleaning up temporary values
-    clean_hess_eset(d.obj_tt)
+    # clean_hess_eset(d.obj_tt)
+    # for i=1:d.numConstr
+    #     clean_hess_eset(d.constr_tt[i])
+    # end
+
+    prepare_reeval_hess2(d.obj_tt)
     for i=1:d.numConstr
-        clean_hess_eset(d.constr_tt[i])
+        prepare_reeval_hess2(d.constr_tt[i])
     end
+    ## clean up done
 
     tic()
+    # m=1
+    # h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
+    # @inbounds for (i,h_i) in h
+    #     for (j,v) in h_i
+    #         H[m] =v 
+    #         m+=1
+    #     end
+    # end
+    hess_reverse2(d.obj_tt,x,d.pvals,obj_factor)
     m=1
-    h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
-    @inbounds for (i,h_i) in h
-        for (j,v) in h_i
-            H[m] =v 
-            m+=1
-        end
+    for i=1:length(d.obj_tt.hess)
+        H[m] = d.obj_tt.hess[i]
+        m += 1
     end
-    @inbounds for i=1:d.numConstr
-        h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
-        for (i,h_i) in h
-            for (j,v) in h_i
-                H[m] =v 
-                m+=1
-            end
+
+    # @inbounds for i=1:d.numConstr
+    #     h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
+    #     for (i,h_i) in h
+    #         for (j,v) in h_i
+    #             H[m] =v 
+    #             m+=1
+    #         end
+    #     end
+    # end
+    for i=1:d.numConstr
+        @inbounds tt = d.constr_tt[i]
+        @inbounds hess_reverse2(tt,x,d.pvals,lambda[i])
+        @inbounds for j=1:length(tt.hess) 
+            @inbounds H[m] = tt.hess[j]
+            m += 1
         end
     end
     d.eval_hesslag_timer += toq()
