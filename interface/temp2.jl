@@ -186,8 +186,31 @@ return :((0.5 * 0.005 * (x[404] ^ 2 + x[403] ^ 2) + 0.5 * 350 * 0.005 * (cos(x[2
 end
 
 
-
+using ReverseDiffTape
 x=Vector{Float64}()
+p=Vector{Float64}()
 x1=AD_V(x,1.1)
 x2=AD_V(x,2.2)
-y=x1*x2
+x3=AD_V(x,1.1)
+x4=AD_V(x,2.2)
+p2=AD_P(p,2.0)
+y=x1*x2*x3
+tt = tapeBuilder(y.data)
+@time hess_structure2(tt)
+@time hess_reverse2(tt,x,p)
+
+y=sin(x1*x2)
+
+y=x1*x2 + x3*x4
+tt = tapeBuilder(y.data)
+@time hess_structure2(tt)
+
+y=x1^p2
+tt=tapeBuilder(y.data)
+@time hess_structure2(tt)
+
+y=x1*x2*x3*x4
+tt = tapeBuilder(y.data)
+@time hess_structure2(tt)
+
+
