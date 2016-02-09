@@ -86,20 +86,18 @@ type Tape{I,V}
     hess::Vector{V}
     nzh::I
     node_idx_to_number::SparseMatrixCSC{I,I}
-    live_vars::Vector{Vector{I}}  #node number -> indexes list on tape
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
 
-    imm1ord::Vector{V}
+    imm::Vector{V}
     imm1ordlen::I
+    imm2ordlen::I
 
     tr::Vector{I}
     trlen::I
 
     eset::Dict{I,Dict{I,V}}
     liveVar::Dict{I,Set{I}}
-    imm2ord::Vector{V}
-    imm2ordlen::I
     h::Dict{I,Dict{I,V}}
 
     nvar::I
@@ -107,12 +105,11 @@ type Tape{I,V}
     nnode::I
     maxoperands::I
     fstkmax::I
-    # nzg::I
-
+    
     function Tape()
         return new(
             Vector{I}(),  #tt
-            Vector{V}(),  #stack
+            Vector{V}(),  #stack - used for adjoints in reverse sweep
             
             Vector{I}(),  #grad_I
             Vector{V}(),  #grad value
@@ -123,21 +120,23 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
-            Vector{Vector{I}}(),  #live vars 
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
 
-            Vector{V}(), #imm1ord
-            zero(I),     #1st order stack length
+            Vector{V}(), #imm , using for both 1st and 2nd order
+            zero(I),     #1st order length
+            zero(I),     #2nd order length
             
-            Vector{I}(), #reverse order level trace
-            zero(I),     #
+            Vector{I}(), #reverse order level trace, tr vector
+            zero(I),     #trlen
 
 
-            Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
-            Vector{V}(),zero(I),
-            Dict{I,Dict{I,V}}(),
-            zero(I),zero(I),zero(I),zero(I),zero(I))
+            Dict{I,Dict{I,V}}(),  #eset
+            Dict{I,Set{I}}(),     #liveVar
+            Dict{I,Dict{I,V}}(),  #h
+
+            zero(I),zero(I),zero(I),zero(I),zero(I)
+            )
     end
 
     function Tape(data::Vector{I})
@@ -154,16 +153,23 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
-            Vector{Vector{I}}(),  #live vars 
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
 
-            Vector{V}(),zero(I),
-            Vector{I}(),zero(I),
-            Dict{I,Dict{I,V}}(),Dict{I,Set{I}}(),
-            Vector{V}(),zero(I),
-            Dict{I,Dict{I,V}}(),
-            zero(I),zero(I),zero(I),zero(I),zero(I))
+            Vector{V}(), #imm , using for both 1st and 2nd order
+            zero(I),     #1st order length
+            zero(I),     #2nd order length
+            
+            Vector{I}(), #reverse order level trace, tr vector
+            zero(I),     #trlen
+
+
+            Dict{I,Dict{I,V}}(),  #eset
+            Dict{I,Set{I}}(),     #liveVar
+            Dict{I,Dict{I,V}}(),  #h
+
+            zero(I),zero(I),zero(I),zero(I),zero(I)
+            )
         analysize_tape(this)
         return this
     end
@@ -173,12 +179,14 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     tt = tape.tt
     idx = one(I)
     istk = Vector{I}()
-    v_idx_max = 0
+    v_idx_max = zero(I)
+    immlen_max = zero(I)  # for sure >= 2ord 1ord
+    
     node_idxes = Vector{I}()
     node_numbers = Vector{I}()
     @inbounds while(idx <= length(tt))
         # @show idx
-        ntype = tt[idx]
+        @inbounds ntype = tt[idx]
         idx += 1
         if(ntype == TYPE_P)
             idx += 2 #skip TYPE_P
@@ -192,9 +200,9 @@ function analysize_tape{I,V}(tape::Tape{I,V})
             node_idx = idx - 3
         elseif(ntype == TYPE_O)
             idx += 1  #skip oc
-            n = tt[idx]
+            @inbounds n = tt[idx]
             idx += 2  #skip TYPE_O
-            tape.imm2ordlen += n + round(I,(n+1)*n/2)  #max estimation
+            immlen_max += n + round(I,(n+1)*n/2)  #max estimation
             tape.maxoperands = max(n,tape.maxoperands)
             
             tape.fstkmax = max(tape.fstkmax,length(istk))
@@ -221,26 +229,21 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     # @show node_idxes,node_numbers
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
-    tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
     tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar);
     tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
     for i=1:tape.nnode+tape.nvar 
-        tape.live_vars[i] = Vector{Int}() 
-        tape.bh[i] = Vector{mPair{Int,Float64}}();
+        @inbounds tape.bh[i] = Vector{mPair{Int,Float64}}();
     end
 
     # init
-    resize!(tape.imm1ord, tape.nnode-1)
-    tape.imm1ordlen = length(tape.imm1ord)
-    resize!(tape.imm2ord, tape.imm2ordlen)
+    resize!(tape.imm, immlen_max)
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
     tape.trlen = length(tape.tr)
     # tape.nzg = -1
     # verification
-    assert(length(tape.imm1ord) == tape.nnode-1)
-    assert(length(tape.tr) == tape.nnode-1) 
+    assert(length(tape.tr) == tape.nnode-1)  #root node is not on tr
 end
 
 
