@@ -95,6 +95,9 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     pvals::Vector{Float64}
     obj_tt::Tape{Int,Float64}
     constr_tt::Vector{Tape{Int,Float64}}
+    init::Int
+    # laghess_tt::Tape{Int,Float64}  #full expr
+    # p::Vector{Float64}             #obj factor + lambda
 
     jac_I::Vector{Int}
     jac_J::Vector{Int}
@@ -125,9 +128,17 @@ function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numCons
  	return TapeNLPEvaluator(nlpe, 
         numVar,numConstr,
         Vector{Float64}(), #parameter values
+        
         Tape{Int,Float64}(), #objective tape
         Vector{Tape{Int,Float64}}(),  #constraints tape
+
+        -1, #init
+
+        # Tape{Int,Float64}(),  #full expr
+        # Vector{Float64}(),    #obj factor + lambda
+
         Vector{Int}(), Vector{Int}(),-1, #Jacobian
+        
         Vector{Int}(), Vector{Int}(),-1, #Hessian
         0.0,                        #tape build time
         0.0, 0.0, 0.0, 0.0, 0.0,   #my timer
@@ -164,27 +175,37 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     # @show jd.eval_hesslag_timer
 
 	#let's building up the tape
-    tic()
-	objexpr = MathProgBase.obj_expr(jd)
-    # @show objexpr
-   
-	assert(length(d.pvals) == 0)  ## assume no values in pvals
-	tapeBuilder(objexpr,d.obj_tt,d.pvals)
+    if(d.init == -1)
+        tic()
+    	objexpr = MathProgBase.obj_expr(jd)
+        # @show objexpr
+       
+    	assert(length(d.pvals) == 0)  ## assume no values in pvals
+    	tapeBuilder(objexpr,d.obj_tt,d.pvals)
+        
+        # hesslag_expr = AD(d.obj_tt.tt)*AD_P(d.p,1.0)
 
-    for i =1:1:d.numConstr
-       conexpr = MathProgBase.constr_expr(jd,i)
-       # @show conexpr.args[1]
-       # @show dump(conexpr)
-       j = length(conexpr.args)==3?1:3
-       tt = Tape{Int,Float64}()
-       tapeBuilder(conexpr.args[j],tt,d.pvals)
-       push!(d.constr_tt,tt)
-       # @show d.constr_tt[i]
+        for i =1:1:d.numConstr
+           conexpr = MathProgBase.constr_expr(jd,i)
+           # @show conexpr.args[1]
+           # @show dump(conexpr)
+           j = length(conexpr.args)==3?1:3
+           tt = Tape{Int,Float64}()
+           tapeBuilder(conexpr.args[j],tt,d.pvals)
+           push!(d.constr_tt,tt)
+           # hesslag_expr = hesslag_expr + AD(tt.tt)*AD_P(d.p,1.0)
+           # @show d.constr_tt[i]
+        end
+        # d.laghess_tt = tapeBuilder(hesslag_expr.data)
+        @assert length(d.constr_tt) == d.numConstr
+        # @assert length(d.p) == 1+d.numConstr
+
+        tprep = toq()
+        println("TapeNLPEvaluator - initialize takes ",tprep)
+        d.tape_build = tprep
+
+        d.init = 1  #set initialized tapes
     end
-    assert(length(d.constr_tt) == d.numConstr)
-    tprep = toq()
-    println("TapeNLPEvaluator - initialize takes ",tprep)
-    d.tape_build = tprep
 
     # reset timers
     d.eval_f_timer = 0.0
@@ -318,8 +339,7 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     # @show x
     assert(d.jac_nnz != -1)  #structure already computed
     assert(length(J) == d.jac_nnz)
-    fill!(J,0.0)
-
+    
     tic()
     J_len = 0
     @inbounds for i = 1:d.numConstr
@@ -373,40 +393,25 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     if(d.laghess_nnz != -1)
         return d.laghess_I, d.laghess_J        
     end
-    I = Vector{Int}()
-    J = Vector{Int}()
-
-    # veset = Dict{Int,Set{Int}}()
-    # println("obj ",MathProgBase.obj_expr(d.jd))
+   
     hess_structure2(d.obj_tt)
-    append!(I,d.obj_tt.h_I)
-    append!(J,d.obj_tt.h_J)
-
-    # h = hess_structure_lower(d.obj_tt)
-    # for (i,h_i) in h
-    #     for (j,v) in h_i
-    #         push!(I,i)
-    #         push!(J,j)
-    #     end
-    # end
+    I = d.obj_tt.h_I
+    J = d.obj_tt.h_J
 
     for i=1:d.numConstr
-        # println(i," ",MathProgBase.constr_expr(d.jd,i))
         hess_structure2(d.constr_tt[i])
         append!(I,d.constr_tt[i].h_I)
         append!(J,d.constr_tt[i].h_J)
-        # @inbounds h = hess_structure_lower(d.constr_tt[i])
-        # for (i,h_i) in h
-        #     for (j,v) in h_i
-        #         push!(I,i)
-        #         push!(J,j)
-        #     end
-        # end
     end
     
+    #
+    # hess_structure2(d.laghess_tt)
+    # I = d.laghess_tt.h_I
+    # J = d.laghess_tt.h_J
+
     assert(length(I) == length(J))
     V = ones(Float64,length(I))
-    csc = sparse(I,J,V)
+    csc = sparse(I,J,V,d.numVar,d.numVar)
     # @show I
     # @show J
 
@@ -414,7 +419,7 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     (jI, jJ) = MathProgBase.hesslag_structure(d.jd)
     assert(length(jI) == length(jJ))
     jV = ones(Float64,length(jI))
-    jcsc = sparse(jI,jJ,jV)
+    jcsc = sparse(jI,jJ,jV,d.numVar,d.numVar)
     # @show jI
     # @show jJ
    
@@ -423,8 +428,8 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     # @show jcsc
     # @show csc.colptr
     # @show jcsc.colptr
-    # assert(csc.m == jcsc.m)
-    # assert(csc.n == jcsc.n)
+    assert(csc.m == jcsc.m)
+    assert(csc.n == jcsc.n)
     # assert(csc.colptr == jcsc.colptr)
     # assert(csc.rowval == jcsc.rowval)
 
@@ -443,47 +448,32 @@ function MathProgBase.eval_hesslag(
     lambda::Vector{Float64})    # Multipliers for each constraint
     
 
-    assert(length(lambda) == d.numConstr)
-    assert(length(H) == length(d.laghess_J))
-    assert(length(H) == length(d.laghess_I))
+    @assert length(lambda) == d.numConstr
+    @assert length(H) == length(d.laghess_J)
+    @assert length(H) == length(d.laghess_I)
+    # @assert length(d.p) == d.numConstr + 1
     
-    #cleaning up temporary values
-    # clean_hess_eset(d.obj_tt)
-    # for i=1:d.numConstr
-    #     clean_hess_eset(d.constr_tt[i])
-    # end
-
     prepare_reeval_hess2(d.obj_tt)
     for i=1:d.numConstr
         prepare_reeval_hess2(d.constr_tt[i])
     end
+
+    # prepare_reeval_hess2(d.laghess_tt)
     ## clean up done
 
-    tic()
-    # m=1
-    # h = hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
-    # @inbounds for (i,h_i) in h
-    #     for (j,v) in h_i
-    #         H[m] =v 
-    #         m+=1
-    #     end
+    # d.p[1] = obj_factor
+    # for i = 2:length(d.p)
+    #     @inbounds d.p[i] = lambda[i-1]
     # end
+
+    tic()
     hess_reverse2(d.obj_tt,x,d.pvals,obj_factor)
     m=1
     for i=1:length(d.obj_tt.hess)
-        H[m] = d.obj_tt.hess[i]
+        @inbounds H[m] = d.obj_tt.hess[i]
         m += 1
     end
-
-    # @inbounds for i=1:d.numConstr
-    #     h = hess_reverse(d.constr_tt[i],x,d.pvals,lambda[i])
-    #     for (i,h_i) in h
-    #         for (j,v) in h_i
-    #             H[m] =v 
-    #             m+=1
-    #         end
-    #     end
-    # end
+    
     for i=1:d.numConstr
         @inbounds tt = d.constr_tt[i]
         @inbounds hess_reverse2(tt,x,d.pvals,lambda[i])
@@ -492,7 +482,10 @@ function MathProgBase.eval_hesslag(
             m += 1
         end
     end
+
+    # hess_reverse2(d.laghess_tt,x,d.p)
     d.eval_hesslag_timer += toq()
+    # H = d.laghess_tt.hess
 
     csc = sparse(d.laghess_I,d.laghess_J,H)
     # @show csc

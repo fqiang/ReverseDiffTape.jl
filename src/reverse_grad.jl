@@ -6,30 +6,30 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
     tt = tape.tt
     idx = one(I)
     stk = tape.stk
-    stklen = 0
-    imm = tape.imm1ord
-    immlen = 0
+    stklen = zero(I)
+    imm = tape.imm
+    immlen = zero(I)
 
-    @inbounds while(idx <= length(tt))
+    while(idx <= length(tt))
         # @show idx
         # println("++++++++++++++++++++++++++++++++++++")
-        ntype = tt[idx]
+        @inbounds ntype = tt[idx]
         idx += 1
         if(ntype == TYPE_P)
             # tic()
-            val = pvals[tt[idx]]
+            @inbounds val = pvals[tt[idx]]
             idx += 2 #skip TYPE_P
             stklen += 1
-            stk[stklen] = val
+            @inbounds stk[stklen] = val
         elseif(ntype == TYPE_V)
-            val = vvals[tt[idx]]
+            @inbounds val = vvals[tt[idx]]
             idx += 2 #skip TYPE_V
             stklen += 1
-            stk[stklen] = val
+            @inbounds stk[stklen] = val
         elseif(ntype == TYPE_O)
-            oc = tt[idx]
+            @inbounds oc = tt[idx]
             idx += 1
-            n = tt[idx]
+            @inbounds n = tt[idx]
             idx += 1
             idx += 1 #skip TYPE_O
             # @show OP[oc], n, stklen-n+1, stklen
@@ -53,7 +53,8 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
         # @show stk
         # println("++++++++++++++++++++++++++++++++++++")
     end
-    return stk[1]
+    tape.imm1ordlen = immlen
+    return @inbounds stk[1]
 end
 
 function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
@@ -61,18 +62,18 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
     # assert(length(imm) == tape.nnode -1)
     tt = tape.tt
     idx = length(tt)
-    imm = tape.imm1ord
-    immlen = length(imm)
+    imm = tape.imm
+    immlen = tape.imm1ordlen
     
     adjs = tape.stk
     adjlen = 1
     @inbounds adjs[adjlen] = one(V) #initial value
 
     nnz = zero(I)
-    @inbounds while(idx > 0)
-        ntype = tt[idx]
+    while(idx > 0)
+        @inbounds ntype = tt[idx]
         idx -= 1
-        adj = adjs[adjlen]
+        @inbounds adj = adjs[adjlen]
         adjlen -= 1
         if(ntype == TYPE_P)
             idx -= 2
@@ -80,14 +81,14 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
             # @show tt[idx],adj
             # adj=isnan(adj)?0.0:adj
             nnz += 1
-            tape.g[nnz]=adj
+            @inbounds tape.g[nnz]=adj
             idx -= 2
         elseif(ntype == TYPE_O)
-            n = tt[idx]
+            @inbounds n = tt[idx]
             idx -= 3 #skip TYPE_O 
             @simd for i=immlen-n+1:immlen
                 adjlen += 1
-                adjs[adjlen] = imm[i]*adj
+                @inbounds adjs[adjlen] = imm[i]*adj
             end
             immlen -= n
         end

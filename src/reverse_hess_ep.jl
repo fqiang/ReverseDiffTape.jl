@@ -190,7 +190,7 @@ function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
     # empty!(tr)
     stk = tape.stk
     stklen = zero(I)
-    imm = tape.imm2ord
+    imm = tape.imm
     immlen = zero(I)
     
     @inbounds while(idx <= length(tt))
@@ -242,7 +242,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, factor::V)
     tt = tape.tt
     idx = length(tt)
     trlen = length(tr)
-    imm = tape.imm2ord
+    imm = tape.imm
     immlen = tape.imm2ordlen
     assert(length(imm) == immlen)
 
