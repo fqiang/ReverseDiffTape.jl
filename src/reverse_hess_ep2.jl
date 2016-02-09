@@ -1,6 +1,6 @@
 #edge pusing algorithm for Hessian reverse AD
 
-function cleanup_hess2(tape)
+function reset_hess2(tape)
     assert(length(tape.live_vars) == length(tape.bh) == length(tape.bh_idxes) == tape.nnode+tape.nvar)  
     for i=1:tape.nnode+tape.nvar 
         tape.live_vars[i] = Vector{Int}() 
@@ -12,6 +12,10 @@ function cleanup_hess2(tape)
     tape.h_J = Vector{I}() #hess_J
     tape.hess = Vector{Float64}() #hess value
     tape.nzh = -one(Int)     #hess indicator
+end
+
+function prepare_reeval_hess2(tape)
+    fill!(tape.bh_idxes,zero(Int))
 end
 
 @inline function push_edge(tape,to,from)
@@ -160,11 +164,11 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                 assert(li_num!=0)
                 assert(li_idx < ri_idx)
                 # push!(tape.live_vars[ri_num],ri_idx)
-                push_edge(tape,ri_num,ri_idx)
+                push_edge(tape,li_num,li_idx)
                 # push!(tape.live_vars[li_num],ri_idx)
                 push_edge(tape,ri_num,li_idx)   #li (from) --> ri (to)
                 # push!(tape.live_vars[li_num],li_idx)
-                push_edge(tape,li_num,li_idx)
+                push_edge(tape,ri_num,ri_idx)
             end
             # @show "after creating", tape.live_vars
             trlen -= n
@@ -242,9 +246,15 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
 end
 
 @inline function update(tape,to,from,w)
-    # @show "update from ", to, "<-- ", from, w
-    @inbounds tape.bh_idxes[to] += 1  
-    @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
+    # @show "update - ", to, "<-- ", from, w
+    # @show tape.bh_idxes[to]
+    # @inbounds 
+    tape.bh_idxes[to] += 1  
+    # @show tape.bh_idxes[to]  
+    # @show tape.bh  
+    # @inbounds 
+    # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
+    tape.bh[to][tape.bh_idxes[to]].w = w
 end
 
 @inline function update_diag(tape,to,from,w)
@@ -318,7 +328,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             idx -= 1
             @inbounds i_num = tape.node_idx_to_number[i_idx]
             #pushing   
-            # @show "pushing ",i_idx
+            # @show "pushing ",i_idx,op_sym,n
             @inbounds lvi = tape.bh[i_num]
             for j = 1:length(lvi)
                 # @inbounds (p_idx,w) = liv[j]
@@ -376,23 +386,24 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                         @inbounds dl = imm[immlen-4]
                         @inbounds dr = imm[immlen-3]
                         update_diag(tape,li_num,li_idx,dl*dl*w)
-                        update_diag(tape,ri_num,ri_idx,dr*dr*w)
                         update(tape,ri_num,li_idx,dl*dr*w)
+                        update_diag(tape,ri_num,ri_idx,dr*dr*w)
                     end
-                else   #p_idx == i_idx
+                else   #when p_idx != i_idx
                     if(n==1)
                         @inbounds ci_idx = tr[trlen] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                         @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
                         update(tape,ci_num,p_idx,w_bar)
                     else
-                        if(OP[oc]==:+)
+                        if(op_sym==:+)
                             for k=trlen-n+1:trlen
-                                @inbounds ci_idx = tr[trlen] + tape.nvar
+                                @inbounds ci_idx = tr[k] + tape.nvar
                                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                # @show ci_idx , ci_num, p_idx, w
                                 update(tape,ci_num,p_idx,w)
                             end
-                        elseif(OP[oc]==:-)
+                        elseif(op_sym==:-)
                             assert(n==2)
                             @inbounds li_idx = tr[trlen-1] + tape.nvar
                             @inbounds li_num = tape.node_idx_to_number[li_idx]
@@ -400,13 +411,13 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                             @inbounds ri_num = tape.node_idx_to_number[ri_idx]
                             update(tape,li_num,p_idx,w)
                             update(tape,ri_num,p_idx,-1.0*w)
-                        elseif(OP[oc] == :*)
+                        elseif(op_sym == :*)
                             j = immlen - round(I,n+n*(n-1)/2)+1
                             for k=trlen -n+1:trlen
                                 @inbounds ci_idx = tr[k] + tape.nvar
                                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                                 @inbounds w_bar = imm[j] * w
-                                update(tape,ci_num,p_idx.w_bar)
+                                update(tape,ci_num,p_idx,w_bar)
                             end
                         else #other binary
                             @inbounds li_idx = tr[trlen-1] + tape.nvar
@@ -423,7 +434,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             end
 
             #creating
-            # @show "creating ",i_idx
+            # @show "creating ",i_idx,op_sym,n
             if(op_sym == :+ || op_sym ==:-)
                 #zeros
             elseif(n==1 && op_sym!=:-) #1-ary op
