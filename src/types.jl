@@ -215,10 +215,10 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     node_idxes = node_idxes + tape.nvar #shift nodes up to make room for independent nodes
     node_numbers = node_numbers + tape.nvar #shift  up 
     
-    @show node_idxes,node_numbers
+    # @show node_idxes,node_numbers
     prepend!(node_numbers,collect(1:tape.nvar))    #top tape.nvar is the independent nodes
     prepend!(node_idxes,collect(1:tape.nvar))
-    @show node_idxes,node_numbers
+    # @show node_idxes,node_numbers
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
     tape.live_vars = Vector{Vector{Int}}(tape.nnode+tape.nvar)  
