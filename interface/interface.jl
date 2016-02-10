@@ -154,9 +154,11 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
  #    @show d.eval_g_timer
  #    @show d.eval_jac_g_timer 
  #    @show d.eval_hesslag_timer
-
+    tic()
     jd = d.jd
     MathProgBase.initialize(jd,[:Grad,:Jac,:ExprGraph,:Hess])
+    jd_init = toq()
+    @show "JuMP evaluator initialize ", jd_init
     # @show jd.eval_f_timer
     # @show jd.eval_grad_f_timer
     # @show jd.eval_g_timer
@@ -206,7 +208,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
         # @assert length(d.p) == 1+d.numConstr
 
         tprep = toq()
-        println("TapeNLPEvaluator - initialize takes ",tprep)
+        @show "TapeNLPEvaluator initialize ",tprep
         d.tape_build = tprep
 
         d.init = 1  #set initialized tapes

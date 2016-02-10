@@ -4,16 +4,22 @@ include("interface.jl")
 using TapeInterface
 using JuMP
 using Ipopt
+N     = 1000
+alpha = 350
 
 m = Model(solver=TapeSolver(IpoptSolver()))
-# m = Model(solver=IpoptSolver())
-@defVar(m, 1<=x<=10)
-@defVar(m, 1<=y<=10)
-@defVar(m, 1<=z<=10)
-@defVar(m, 1<=v<=10)
-@setNLObjective(m, Min, -0.5*x*y-x*y+x*z*v)
-@addNLConstraint(m,sin(x*y)-v+cos(x*z) <= 100)
-@addNLConstraint(m,x^2*y^2+y*z-v <= 100)
+
+@defVar(m, -100 <= x0 <= 100)
+@defVar(m, -100 <= x[1:N] <= 100)
+@defVar(m, -100 <= y[1:N] <= 100)
+@defVar(m, -100 <= z[1:N] <= 100)
+
+
+@setNLObjective(m, Min, x0*(sum{ sin(x[i])*cos(y[i]) + sin(x[i]+z[i]), i = 1:N}))
+@addNLConstraint(m, x0*(sum{ x[i] , i=1:N})  <= 100)
+@addNLConstraint(m, x0*(sum{ y[i] , i=1:N})  <= 100)
+@addNLConstraint(m, x0*(sum{ z[i] , i=1:N})  <= 100)
+
 solve(m)
 
 
