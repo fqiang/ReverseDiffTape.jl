@@ -14,7 +14,7 @@ const EPS=1e-10
 type TapeSolver <: MathProgBase.AbstractMathProgSolver
 	s::MathProgBase.AbstractMathProgSolver
 end
-export TapeSolver
+export TapeSolver, reset_timer
 
 type TapeData <: MathProgBase.AbstractMathProgModel
     evaluator   ##cannot be typed ? why
@@ -33,17 +33,17 @@ end
 
 function MathProgBase.status(m::TapeData)
     # @show m.evaluator
-    # @show m.evaluator.eval_f_timer
-    # @show m.evaluator.eval_g_timer
-    # @show m.evaluator.eval_grad_f_timer
-    # @show m.evaluator.eval_jac_g_timer
-    # @show m.evaluator.eval_hesslag_timer
+    @show m.evaluator.eval_f_timer
+    @show m.evaluator.eval_g_timer
+    @show m.evaluator.eval_grad_f_timer
+    @show m.evaluator.eval_jac_g_timer
+    @show m.evaluator.eval_hesslag_timer
     
-    # @show m.evaluator.jd.eval_f_timer
-    # @show m.evaluator.jd.eval_g_timer
-    # @show m.evaluator.jd.eval_grad_f_timer
-    # @show m.evaluator.jd.eval_jac_g_timer
-    # @show m.evaluator.jd.eval_hesslag_timer
+    @show m.evaluator.jeval_f_timer
+    @show m.evaluator.jeval_g_timer
+    @show m.evaluator.jeval_grad_f_timer
+    @show m.evaluator.jeval_jac_g_timer
+    @show m.evaluator.jeval_hesslag_timer
     
     return MathProgBase.status(m.m)
 end
@@ -95,6 +95,7 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     pvals::Vector{Float64}
     obj_tt::Tape{Int,Float64}
     constr_tt::Vector{Tape{Int,Float64}}
+    nl_idxes::Vector{Int}
     init::Int
     # laghess_tt::Tape{Int,Float64}  #full expr
     # p::Vector{Float64}             #obj factor + lambda
@@ -132,6 +133,7 @@ function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numCons
         Tape{Int,Float64}(), #objective tape
         Vector{Tape{Int,Float64}}(),  #constraints tape
 
+        Vector{Int}(), #nl_idxes
         -1, #init
 
         # Tape{Int,Float64}(),  #full expr
@@ -185,16 +187,19 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
         
         # hesslag_expr = AD(d.obj_tt.tt)*AD_P(d.p,1.0)
 
-        for i =1:1:d.numConstr
-           conexpr = MathProgBase.constr_expr(jd,i)
-           # @show conexpr.args[1]
-           # @show dump(conexpr)
-           j = length(conexpr.args)==3?1:3
-           tt = Tape{Int,Float64}()
-           tapeBuilder(conexpr.args[j],tt,d.pvals)
-           push!(d.constr_tt,tt)
-           # hesslag_expr = hesslag_expr + AD(tt.tt)*AD_P(d.p,1.0)
-           # @show d.constr_tt[i]
+        for i =1:d.numConstr
+            conexpr = MathProgBase.constr_expr(jd,i)
+            if !MathProgBase.isconstrlinear(jd,i) 
+                push!(d.nl_idxes,i)
+            end
+            # @show conexpr.args[1]
+            # @show dump(conexpr)
+            j = length(conexpr.args)==3?1:3
+            tt = Tape{Int,Float64}()
+            tapeBuilder(conexpr.args[j],tt,d.pvals)
+            push!(d.constr_tt,tt)
+            # hesslag_expr = hesslag_expr + AD(tt.tt)*AD_P(d.p,1.0)
+            # @show d.constr_tt[i]
         end
         # d.laghess_tt = tapeBuilder(hesslag_expr.data)
         @assert length(d.constr_tt) == d.numConstr
@@ -208,17 +213,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     end
 
     # reset timers
-    d.eval_f_timer = 0.0
-    d.eval_grad_f_timer = 0.0
-    d.eval_g_timer = 0.0
-    d.eval_jac_g_timer = 0.0
-    d.eval_hesslag_timer = 0.0
-
-    d.jeval_f_timer = 0.0
-    d.jeval_grad_f_timer = 0.0
-    d.jeval_g_timer = 0.0
-    d.jeval_jac_g_timer = 0.0
-    d.jeval_hesslag_timer = 0.0
+    reset_timer(d)
 
     nothing
 end
@@ -398,10 +393,11 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     I = d.obj_tt.h_I
     J = d.obj_tt.h_J
 
-    for i=1:d.numConstr
-        hess_structure2(d.constr_tt[i])
-        append!(I,d.constr_tt[i].h_I)
-        append!(J,d.constr_tt[i].h_J)
+    for i=1:length(d.nl_idxes)
+        @inbounds tt = d.constr_tt[d.nl_idxes[i]]
+        hess_structure2(tt)
+        append!(I,tt.h_I)
+        append!(J,tt.h_J)
     end
     
     #
@@ -454,8 +450,8 @@ function MathProgBase.eval_hesslag(
     # @assert length(d.p) == d.numConstr + 1
     
     prepare_reeval_hess2(d.obj_tt)
-    for i=1:d.numConstr
-        prepare_reeval_hess2(d.constr_tt[i])
+    for i=1:length(d.nl_idxes)
+        @inbounds prepare_reeval_hess2(d.constr_tt[d.nl_idxes[i]])
     end
 
     # prepare_reeval_hess2(d.laghess_tt)
@@ -474,10 +470,10 @@ function MathProgBase.eval_hesslag(
         m += 1
     end
     
-    for i=1:d.numConstr
-        @inbounds tt = d.constr_tt[i]
+    for i=1:length(d.nl_idxes)
+        @inbounds tt = d.constr_tt[d.nl_idxes[i]]
         @inbounds hess_reverse2(tt,x,d.pvals,lambda[i])
-        @inbounds for j=1:length(tt.hess) 
+        for j=1:length(tt.hess) 
             @inbounds H[m] = tt.hess[j]
             m += 1
         end
@@ -523,7 +519,20 @@ function assertArrayEqualEps(a1,a2)
     end
 end
 
+function reset_timer(d)
+    d.eval_f_timer = 0.0
+    d.eval_grad_f_timer = 0.0
+    d.eval_g_timer = 0.0
+    d.eval_jac_g_timer = 0.0
+    d.eval_hesslag_timer = 0.0
+
+    d.jeval_f_timer = 0.0
+    d.jeval_grad_f_timer = 0.0
+    d.jeval_g_timer = 0.0
+    d.jeval_jac_g_timer = 0.0
+    d.jeval_hesslag_timer = 0.0
 end
 
+end #end module
 #########
 
