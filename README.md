@@ -38,15 +38,16 @@ Jump to see [Examples](https://github.com/fqiang/ReverseDiffTape.jl#example-of-u
 AD type is a wrapper of a data array which repsents the computation graph in postfix notation. This allow the postfix array to be build easily. For example,
 
 ```julia
-    using ReverseDiffTape
-    p = Vector{Float64}()
-    x = Vector{Float64}()
-    x1 = AD_V(x, 1.1)
-    x2 = AD_V(x, 2.2)
-    x3 = AD_V(x, 3.3)
-    p1 = AD_P(p, 1.0)
-    p2 = AD_P(p, 2.0)
-    c = sin(x1)+cos(x2^p2) * p1 - x3*p2
+using ReverseDiffTape
+p = Vector{Float64}()
+x = Vector{Float64}()
+x1 = AD_V(x, 1.1)
+x2 = AD_V(x, 2.2)
+x3 = AD_V(x, 3.3)
+p1 = AD_P(p, 1.0)
+p2 = AD_P(p, 2.0)
+c = sin(x1)+cos(x2^p2) * p1 - x3*p2
+@show c.data
 ```
 Then, c.data will give us the correponding postfix notation for the function expression. 
 
@@ -105,26 +106,25 @@ in julia console, then you are ready to try the examples below.
 - To evaluate function `sin(x1)+cos(x2^2)*1-x3 `, given `x1=1.1, x2=2.2, x3=3.3`
 
 ```julia
-    p = Vector{Float64}()  #a empty vector of parameters
-    x = Vector{Float64}()  #a empty vector of independent variables
-    x1 = AD_V(x, 1.1)      #creating x1
-    x2 = AD_V(x, 2.2)      #creating x2
-    x3 = AD_V(x, 3.3)      #creating x3
-    p1 = AD_P(p, 1.0)      #creating a parameter 1.0
-    p2 = AD_P(p, 2.0)      #creating a parameter 2.0
-    c = sin(x1)+cos(x2^p2) * p1 - x3*p2   #make a function expression sin(x1)+cos(x2^2)*1.0 - x3*2.0
-    tt = tapeBuilder(c.data)              #building the tape object 
+p = Vector{Float64}()  #a empty vector of parameters
+x = Vector{Float64}()  #a empty vector of independent variables
+x1 = AD_V(x, 1.1)      #creating x1
+x2 = AD_V(x, 2.2)      #creating x2
+x3 = AD_V(x, 3.3)      #creating x3
+p1 = AD_P(p, 1.0)      #creating a parameter 1.0
+p2 = AD_P(p, 2.0)      #creating a parameter 2.0
+c = sin(x1)+cos(x2^p2) * p1 - x3*p2   #make a function expression sin(x1)+cos(x2^2)*1.0 - x3*2.0
+tt = tapeBuilder(c.data)              #building the tape object 
 
-    val = feval(tt,x,p)    #compute the function value
-    grad_structure(tt)     #compute the nonzero indicies in gradient vector
-    grad_reverse(tt,x,p)   #compute the nonzero values in gradient vector
-    hess_structure2(tt)    #compute the nonzero indicies in Hessian matrix
-    hess_reverse2(tt,x,p)  #compute the nonzero values in the Hessian matrix
+val = feval(tt,x,p)    #compute the function value
+grad_structure(tt)     #compute the nonzero indicies in gradient vector
+grad_reverse(tt,x,p)   #compute the nonzero values in gradient vector
+hess_structure2(tt)    #compute the nonzero indicies in Hessian matrix
+hess_reverse2(tt,x,p)  #compute the nonzero values in the Hessian matrix
 
-    @show val
-    @show tt.g_I, tt.g
-    @show tt.h_I, tt.h_J, tt.hess
-end
+@show val
+@show tt.g_I, tt.g
+@show tt.h_I, tt.h_J, tt.hess
 ```
 
 #References: 
