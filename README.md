@@ -5,108 +5,127 @@
 Welcome to the ReverseDiffTape.jl, a Julia package for reverse mode differentiation on a tape.
 
 #Overview
-This julia package implements reverse mode automatic/algorithmic differentiation algorithm for computing gradient and Hessian of a scalar function. The package uses an operator overloading interface for user to build the computation graph on an Tape--an array of integers. Then the interface methods allow the function values, gradient vector, Hessian matrix and also the sparsity pattern of the gradient and Hessian to be evaluated on the indices array. 
+This julia package implements reverse mode automatic/algorithmic differentiation algorithm for computing gradient and Hessian of a scalar function. The Hessian evaluation and pattern finding uses a state-of-the-art reverse Hessian algorithm, named <strong>Edge_Pushing<strong>.
 
 
-#Highlights
-- Operator overloading interface for building computational graph.
-- Everything is implemented on a plain array. 
-- Reverse mode algorithm for both gradient and Hessian evaluation.
-- Implements a state-of-the-art reverse Hessian algorithm, named <strong>Edge_Pushing<strong>
+#Interface
+- Building tape object from the operator overloading interface. 
+- Building tape object from the Julia expression object.
+
+#Computational Graph
+Internally, the ReverseDiffTape represents each computational graph using arrays. 
+- An index array is use to record using Postfix notation.
+- An value array to record the parameter values.
+- An value array to supply the independent variable values.
+
 
 Jump to see [Examples](https://github.com/fqiang/ReverseDiffTape.jl/blob/master/test/runtests.jl) in the tests script of using this package. 
 
-The documentation is out-of-date at this time, but the test/runtest.jl will give a pretty good example how this package is used. 
+#Operator overloading interface
 
-#Package Exports
-##Types
-* TT_TYPE
+* AD(data)
+    
+    creating an AD type object from data array. The data array is already in postfix notation. 
 
-    The array of indicies to represent the computational graph.
+* AD_P( p, val )
+    
+    creating an AD type object that represents a fixed parameter with value equals to val. val is appended to p and its index on p is recorded in this AD object.  
 
-* TV_TYPE
+* AD_V( x, val )
 
-    The array of real numbers for storing parameter and independent variable values.
+    creating an AD type object that repsents an independent variable. val is appended to x array and its index on x is recorded in this AD object. 
 
-* AD_V
+AD type is a wrapper of a data array which repsents the computation graph in postfix notation. This allow the postfix array to be build easily. For example,
 
-    The type used to create an independent variable.
+```julia
+    using ReverseDiffTape
+    p = Vector{Float64}()
+    x = Vector{Float64}()
+    x1 = AD_V(x, 1.1)
+    x2 = AD_V(x, 2.2)
+    x3 = AD_V(x, 3.3)
+    p1 = AD_P(p, 1.0)
+    p2 = AD_P(p, 2.0)
+    c = sin(x1)+cos(x2^p2) * p1 - x3*p2
+```
+Then, c.data will give us the correponding postfix notation for the function expression. 
 
-* AD_P
+* tapeBuilder(data)
+    
+    returns a tape object from the postfix data array.
 
-    The type used to create a parameter. 
+#Julia express interface
 
-* Edge
+* tapeBuilder(expr, p)
+    
+    return a tape object from Julia expression object. The fixed parameter values are pushed into the parameter value array p. It is assume that independent variable in the Julia expression is represented by the ref symbol.
 
-    The edge type is return for Hessian to represent a nonlinear relationships between two independent variables. 
 
-##Interface Functions
+#Tape operations
+
+Once we have a tape object, the function values and gradient and Hessian matrix can be evaluated by the following interface operations. 
+
 * Function evaluation
-    - feval(tt::TT_TYPE, vvals::TV_TYPE, pvals::TV_TYPE)
+    - feval(tape, x, p)
+
+feval, 
+    grad_reverse,  grad_structure,
+    hess_structure_lower, hess_reverse, clean_hess_eset,
+    hess_structure2, hess_reverse2, reset_hess2, prepare_reeval_hess2
+
 
 * Gradient evaluation
-    - grad_reverse(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE)
-    - nzg(tt::TT_TYPE)
+    - grad_reverse(tape, x, p)
+
+        evaluating the gradient vector. The corresponding nonzero values are recorded in tape.g. 
+
+    - grad_structure(tape)
+
+        evaluating the gradient structure. Nonzero indicies are recorded in tape.g_I. 
 
 * Hessian evaluation
-    - reverse_hess_ep(tt::TT_TYPE,vvals::TV_TYPE,pvals::TV_TYPE)
-    - nzh(tt::TT_TYPE)
+    - hess_structure2(tape)
 
-#Using this Package
-This package is designed to be very user friendly for using it.
+        evaluating the sparsity pattern of the Hessian matrix. The nonzero row and column indicies are recorded in tape.h_I and tape.h_J correspondingly.
+
+    - hess_reverse2(tape,x,p,factor=1.0)
+
+        evaluating the nonzero values of the Hessian matrix. The nonzero values are recorded in tape.hess. 
+
+
+#Example of using this package
+
 Just type 
 ```julia 
 using ReverseDiffTape 
 ``` 
-in julia console, then you are already to try the examples below.
+in julia console, then you are ready to try the examples below.
 
 ##Example
 - To evaluate function `sin(x1)+cos(x2^2)*1-x3 `, given `x1=1.1, x2=2.2, x3=3.3`
-```julia
-function test1() 
-    tt = TT_TYPE()
-	pvals = TV_TYPE()
-	vvals = TV_TYPE()
-	x1 = AD_V(tt, vvals, 1.1)
-	x2 = AD_V(tt, vvals, 2.2)
-	x3 = AD_V(tt, vvals, 3.3)
-	p1 = AD_P(tt, pvals, 1)
-	p2 = AD_P(tt, pvals, 2)
-	c = sin(x1)+cos(x2^p2) * p1 - x3*p2
-	val = feval(tt,vvals,pvals)
-    return val
-end
-```
-- Reverse gradient evaluation for function `sin(x1)+cos(x2)`, given `x1=1.1, x2=2.2`
-```julia
-function test2()
-    tt = TT_TYPE()
-	pvals = TV_TYPE()
-	vvals = TV_TYPE()
-	a = AD_V(tt,vvals,1.1)
-	b = AD_V(tt,vvals,2.2)
-	c=sin(a)*cos(b)
-	grad = grad_reverse(tt,vvals,pvals)
-    return grad
-end
-```
-- Reverse Hessian evaluation for function `cos(x1*x2)`, given `x1=1.1, x2=2.2`
-```julia
-function test3()
-    tt = TT_TYPE()
-	pvals = TV_TYPE()
-	vvals = TV_TYPE()
-	x1 = AD_V(tt,vvals,1.1)
-	x2 = AD_V(tt,vvals,2.2)
-	c = cos(x1*x2)
-	eset = reverse_hess_ep(tt,vvals,pvals)
-    return eset
-end
-```
 
-#Future work
-- At this time, only supports unary and binary operator types, <em>i.e.</em>, +, -, *, /, ^, sin, cos. Later the packages will be extended to support more operation types. 
-- Julia's multiple dispatch idea can be applied to make the code more structured and extensible. <em>i.e.</em>, by dispatching the operator symbol as types. 
+```julia
+    p = Vector{Float64}()  #a empty vector of parameters
+    x = Vector{Float64}()  #a empty vector of independent variables
+    x1 = AD_V(x, 1.1)      #creating x1
+    x2 = AD_V(x, 2.2)      #creating x2
+    x3 = AD_V(x, 3.3)      #creating x3
+    p1 = AD_P(p, 1.0)      #creating a parameter 1.0
+    p2 = AD_P(p, 2.0)      #creating a parameter 2.0
+    c = sin(x1)+cos(x2^p2) * p1 - x3*p2   #make a function expression sin(x1)+cos(x2^2)*1.0 - x3*2.0
+    tt = tapeBuilder(c.data)              #building the tape object 
+
+    val = feval(tt,x,p)    #compute the function value
+    grad_structure(tt)     #compute the nonzero indicies in gradient vector
+    grad_reverse(tt,x,p)   #compute the nonzero values in gradient vector
+    hess_structure2(tt)    #compute the nonzero indicies in Hessian matrix
+    hess_reverse2(tt,x,p)  #compute the nonzero values in the Hessian matrix
+
+    @show val
+    @show tt.g_I, tt.g
+    @show tt.h_I, tt.h_J, tt.hess
+end
+```
 
 #References: 
 R.M. Gower and M.P. Mello. "A new framework for the computation of Hessians", Optimization Methods and Software 27-2, pp. 251–273, 2012. [paper](http://www.ime.unicamp.br/rel_pesq/2010/rp16-10.html)
