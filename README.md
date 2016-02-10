@@ -19,7 +19,7 @@ Internally, the ReverseDiffTape represents each computational graph using arrays
 - An value array to supply the independent variable values.
 
 
-Jump to see [Examples](https://github.com/fqiang/ReverseDiffTape.jl/blob/master/test/runtests.jl) in the tests script of using this package. 
+Jump to see [Examples](https://github.com/fqiang/ReverseDiffTape.jl#example-of-using-this-package) in the tests script of using this package. 
 
 #Operator overloading interface
 
@@ -58,7 +58,7 @@ Then, c.data will give us the correponding postfix notation for the function exp
 
 * tapeBuilder(expr, p)
     
-    return a tape object from Julia expression object. The fixed parameter values are pushed into the parameter value array p. It is assume that independent variable in the Julia expression is represented by the ref symbol.
+    returns a tape object from Julia expression object. The fixed parameter values are pushed into the parameter value array p. It is assume that independent variable in the Julia expression is represented by the ref symbol.
 
 
 #Tape operations
