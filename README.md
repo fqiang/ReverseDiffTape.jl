@@ -5,7 +5,7 @@
 Welcome to the ReverseDiffTape.jl, a Julia package for reverse mode differentiation on a tape.
 
 #Overview
-This julia package implements reverse mode automatic/algorithmic differentiation algorithm for computing gradient and Hessian of a scalar function. The Hessian evaluation and pattern finding uses a state-of-the-art reverse Hessian algorithm, named <strong>Edge_Pushing<strong>.
+This julia package implements reverse mode automatic/algorithmic differentiation algorithm for computing gradient and Hessian of a scalar function. The Hessian evaluation and pattern finding use a state-of-the-art reverse Hessian algorithm, named <strong>Edge_Pushing<strong>.
 
 
 #Interface
@@ -13,10 +13,10 @@ This julia package implements reverse mode automatic/algorithmic differentiation
 - Building tape object from the Julia expression object.
 
 #Computational Graph
-Internally, the ReverseDiffTape represents each computational graph using arrays. 
+Internally, the ReverseDiffTape represents each computational graph using three arrays. 
 - An index array is use to record using Postfix notation.
-- An value array to record the parameter values.
-- An value array to supply the independent variable values.
+- A value array to record the parameter values.
+- A value array to supply the independent variable values.
 
 
 Jump to see [Examples](https://github.com/fqiang/ReverseDiffTape.jl#example-of-using-this-package) in the tests script of using this package. 
