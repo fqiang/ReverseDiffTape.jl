@@ -200,6 +200,33 @@ facts("Hessian EP algorithm y=sin(x1) + cos(x2^p2) ") do
     @fact h[2,1] --> 1.0
 end
 
+facts("Hessian EP algorithm y=x1/x2 + x1/(x1+x2)") do
+    p = Vector{Float64}()
+    x = Vector{Float64}()
+    x1 = AD_V(x,1.1)
+    x2 = AD_V(x,2.2)
+    p2 = AD_P(p,2.0)
+    c = x1/x2+x1/(x1+x2)
+    tt = tapeBuilder(c.data)
+    hess_structure2(tt)
+    hess_reverse2(tt,x,p)
+    h = sparse(tt.h_I,tt.h_J,tt.hess)
+
+    #symbolic
+    y1 = 1.1
+    y2 = 2.2
+    (dy1,dy2) = differentiate("y1/y2+y1/(y1+y2)",[:y1,:y2])
+    hess = Vector{Float64}()
+    push!(hess, @eval $(differentiate(dy1,[:y1])[1]))
+    push!(hess, @eval $(differentiate(dy1,[:y2])[1]))
+    push!(hess, @eval $(differentiate(dy2,[:y2])[1]))
+
+    @fact length(h.nzval) --> 3
+    @fact h[1,1] --> roughly(hess[1])
+    @fact h[2,1] --> roughly(hess[2])
+    @fact h[2,2] --> roughly(hess[3])
+end
+
 
 facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
     p = Vector{Float64}()

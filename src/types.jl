@@ -321,29 +321,20 @@ end
 ##########################################################################################
 
 #building tape with Julia expression
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1})
+function tapeBuilder{I,V}(expr::Expr, pvals::Vector{V}, i::I=0)
+    tape = Tape{I,V}()
+    tapeBuilder(expr,tape,pvals)
+    return tape
+end
+
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
     # @show expr
-    # vset = Set{I}()
     istk = Vector{I}()
     tapeBuilder(expr,tape, pvals, istk)
     analysize_tape(tape)
-
-    # assert(length(tape.tr)==tape.nnode-1)
-    
-    # tape.nvar = length(vset)
-    # tape.imm1ordlen = tape.nnode -1
-    # resize!(tape.imm1ord, tape.imm1ordlen)
-    # resize!(tape.imm2ord, tape.imm2ordlen)
-
-    # resize!(tape.stk, tape.nnode) #max stack size
-    # resize!(tape.g_I, tape.nvnode)
-    # resize!(tape.g,tape.nvnode)
-    # # tape.nzg = -1  #-1 until call grad_structure
-    
-    # @show tape
 end
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},istk::Vector{I})
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I})
     tt = tape.tt
     head = expr.head
     if(head == :ref)  #a JuMP variable
@@ -400,7 +391,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Array{V,1},istk::Ve
     nothing
 end
 
-function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Array{V,1},istk::Vector{I}) #a JuMP parameter
+function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I}) #a JuMP parameter
     tt = tape.tt
     push!(tt,TYPE_P)
     push!(tt,length(pvals)+1)

@@ -18,7 +18,7 @@ function prepare_reeval_hess2(tape)
 end
 
 @inline function push_edge(tape,to,from)
-    # @show "edge - ",to," <--- ", from
+    @show "edge - ",to," <--- ", from
     @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0))    
     # @show tape.bh
 end
@@ -99,7 +99,7 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                             push_edge(tape,cii_num,ci_idx)
                         end
                     end
-                else
+                else  #when i_idx != p_idx
                     for j0 = trlen -n + 1:trlen
                         @inbounds ci_idx = tr[j0] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
@@ -140,7 +140,7 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                     end
                 end 
             elseif (op_sym == :/) # binary operator /
-                assert(false) #not tested , --- not implemented in operator
+                # assert(false) #not tested , --- not implemented in operator
                 assert(n==2)
                 @inbounds ri_idx = tr[trlen] + tape.nvar
                 @inbounds ri_num = tape.node_idx_to_number[ri_idx]
@@ -152,7 +152,7 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                 # push!(tape.live_vars[ri_num],li_idx)
                 push_edge(tape,ri_num,li_idx)
                 # push!(tape.live_vars[ri_num],ri_idx)
-                push_edge(tape,ri_num,li_idx)
+                push_edge(tape,ri_num,ri_idx)
             else # other binary
                 assert(n==2)
                 @inbounds ri_idx = tr[trlen] + tape.nvar
@@ -243,7 +243,7 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
 end
 
 @inline function update(tape,to,from,w)
-    # @show "update - ", to, "<-- ", from, w
+    @show "update - ", to, "<-- ", from, w
     @inbounds tape.bh_idxes[to] += 1  
     # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
     @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
@@ -324,7 +324,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 w = p.w
                 @inbounds p_num = tape.node_idx_to_number[p_idx]
                 if p_idx == i_idx
-                    if (n==1 && op_sym != :-)
+                    if n==1 #&& op_sym != :-
                         @inbounds ci_idx = tr[trlen] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                         @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
@@ -422,13 +422,13 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
 
             #creating
             # @show "creating ",i_idx,op_sym,n
-            if(op_sym == :+ || op_sym ==:-)
-                #zeros
-            elseif(n==1 && op_sym!=:-) #1-ary op
+            if(n==1 && op_sym!=:-) #1-ary op
                 @inbounds ci_idx = tr[trlen] + tape.nvar
                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                 @inbounds w = adj*imm[immlen]
                 update(tape,ci_num,ci_idx,w)
+            elseif(op_sym == :+ || op_sym ==:-)
+                #zeros
             elseif(op_sym == :*)
                 k = immlen - round(I,n*(n-1)/2)+1
                 for j0=trlen-n+1:trlen
@@ -443,7 +443,15 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     end
                 end
             elseif(op_sym == :/)
-                assert(false) #not implemented in operator.jl
+                @inbounds ri_idx = tr[trlen] + tape.nvar
+                @inbounds ri_num = tape.node_idx_to_number[ri_idx]
+                @inbounds li_idx = tr[trlen-1] + tape.nvar
+                @inbounds li_num = tape.node_idx_to_number[li_idx]
+                # @inbounds dll = imm[immlen-2]
+                @inbounds dlr = imm[immlen-1]
+                @inbounds drr = imm[immlen]
+                update(tape,ri_num,li_idx,adj*dlr)
+                update(tape,ri_num,ri_idx,adj*drr)
             else #other binary
                 # assert(n == 2)
                 @inbounds ri_idx = tr[trlen] + tape.nvar
@@ -539,6 +547,12 @@ function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
 end
 
 function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
+    # tic()
     forward_pass2_2ord(tape,vvals,pvals)
+    # f_t = toq()
+    # @show f_t
     reverse_pass2_2ord(tape,factor)
+    # tic()
+    # r_t = toq()
+    # @show r_t
 end
