@@ -18,7 +18,7 @@ function prepare_reeval_hess2(tape)
 end
 
 @inline function push_edge(tape,to,from)
-    @show "edge - ",to," <--- ", from
+    # @show "edge - ",to," <--- ", from
     @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0))    
     # @show tape.bh
 end
@@ -243,7 +243,7 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
 end
 
 @inline function update(tape,to,from,w)
-    @show "update - ", to, "<-- ", from, w
+    # @show "update - ", to, "<-- ", from, w
     @inbounds tape.bh_idxes[to] += 1  
     # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
     @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
