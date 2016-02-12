@@ -179,9 +179,14 @@ function hess_struct2{I,V}(tape::Tape{I,V})
         for j = 1:length(lvi)
             # @inbounds (v_idx,w) = lvi[j]
             @inbounds v_idx = lvi[j].i
-            if(v_idx<=tape.nvar)
-                push!(tape.h_I,i)
-                push!(tape.h_J,v_idx)
+            if(v_idx <=tape.nvar)
+                if(v_idx < i)
+                    push!(tape.h_I,i)
+                    push!(tape.h_J,v_idx)
+                else
+                    push!(tape.h_J,i)
+                    push!(tape.h_I,v_idx)
+                end
             end
         end
     end
@@ -380,7 +385,8 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     if(n==1)
                         @inbounds ci_idx = tr[trlen] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
+                        # @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
+                        @inbounds w_bar = imm[immlen-1]*w
                         update(tape,ci_num,p_idx,w_bar)
                     else
                         if(op_sym==:+)
@@ -405,6 +411,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                                 @inbounds w_bar = imm[j] * w
                                 update(tape,ci_num,p_idx,w_bar)
+                                j += 1
                             end
                         else #other binary
                             @inbounds li_idx = tr[trlen-1] + tape.nvar
@@ -469,7 +476,11 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             #update adjoints
             # @show adjlen, adjs
             imm_counter = zero(I)
-            if op_sym == :+
+            if n==1
+                adjlen += 1
+                @inbounds adjs[adjlen] = imm[immlen-1]*adj
+                imm_counter = 2
+            elseif op_sym == :+
                 for j=1:n
                     adjlen += 1
                     @inbounds adjs[adjlen] = adj
@@ -479,10 +490,6 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 @inbounds adjs[adjlen] = adj
                 adjlen += 1
                 @inbounds adjs[adjlen] = -1.0*adj
-            elseif n==1
-                adjlen += 1
-                @inbounds adjs[adjlen] = imm[immlen-1]*adj
-                imm_counter = 2
             elseif op_sym == :*
                 j = immlen - round(I,n+n*(n-1)/2)+1
                 for m=1:n

@@ -227,6 +227,58 @@ facts("Hessian EP algorithm y=x1/x2 + x1/(x1+x2)") do
     @fact h[2,2] --> roughly(hess[3])
 end
 
+facts("Hessian EP algorithm y=exp(x1+x2+x3)") do
+    p = Vector{Float64}()
+    x = Vector{Float64}()
+    x1 = AD_V(x,1.1)
+    x2 = AD_V(x,2.2)
+    x3 = AD_V(x,3.3)
+    p2 = AD_P(p,2.0)
+    c = exp(x1+x2+x3)*exp(x1*x2*x3)
+    tt = tapeBuilder(c.data)
+    hess_structure2(tt)
+    hess_reverse2(tt,x,p)
+    h = sparse(tt.h_I,tt.h_J,tt.hess)
+
+    #symbolic
+    y1 = 1.1
+    y2 = 2.2
+    y3 = 3.3
+    (dy1,dy2,dy3) = differentiate("exp(y1+y2+y3)*exp(y1*y2*y3)",[:y1,:y2,:y3])
+    # (dy1,dy2) = differentiate("exp(y1+y2)*exp(y1*y2)",[:y1,:y2])
+    # (dy1,dy2) = differentiate("exp(y1+y2)*exp(y1*y2)",[:y1,:y2])
+    hess = Vector{Float64}()
+    push!(hess, @eval $(differentiate(dy1,[:y1])[1]))
+    push!(hess, @eval $(differentiate(dy1,[:y2])[1]))
+    push!(hess, @eval $(differentiate(dy1,[:y3])[1]))
+    push!(hess, @eval $(differentiate(dy2,[:y2])[1]))
+    push!(hess, @eval $(differentiate(dy2,[:y3])[1]))
+    push!(hess, @eval $(differentiate(dy3,[:y3])[1]))
+    
+    @fact length(h.nzval) --> 6
+    @fact h[1,1] --> roughly(hess[1])
+    @fact h[2,1] --> roughly(hess[2])
+    @fact h[3,1] --> roughly(hess[3])
+    @fact h[2,2] --> roughly(hess[4])
+    @fact h[3,2] --> roughly(hess[5])
+    @fact h[3,3] --> roughly(hess[6])
+end
+
+facts("y=x1*(p2*x1+p2*x2)") do
+    p = Vector{Float64}()
+    x = Vector{Float64}()
+    x1 = AD_V(x,1.1)
+    x2 = AD_V(x,2.2)
+    p2 = AD_P(p,2.0)
+    c = x1*(p2*x1+p2*x2)
+    tt = tapeBuilder(c.data)
+    hess_structure2(tt)
+    hess_reverse2(tt,x,p)
+    h = sparse(tt.h_I,tt.h_J,tt.hess)
+    @fact length(h.nzval) --> 2
+    @fact h[1,1] --> 4.0
+    @fact h[2,1] --> 2.0
+end
 
 facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
     p = Vector{Float64}()

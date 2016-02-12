@@ -55,7 +55,7 @@ Then, c.data will give us the correponding postfix notation for the function exp
     
     returns a tape object from the postfix data array.
 
-#Julia express interface
+#Julia expression interface
 
 * tapeBuilder(expr, p)
     
@@ -68,12 +68,6 @@ Once we have a tape object, the function values and gradient and Hessian matrix 
 
 * Function evaluation
     - feval(tape, x, p)
-
-feval, 
-    grad_reverse,  grad_structure,
-    hess_structure_lower, hess_reverse, clean_hess_eset,
-    hess_structure2, hess_reverse2, reset_hess2, prepare_reeval_hess2
-
 
 * Gradient evaluation
     - grad_reverse(tape, x, p)
