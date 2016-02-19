@@ -18,7 +18,7 @@ function prepare_reeval_hess2(tape)
 end
 
 @inline function push_edge(tape,to,from)
-    # @show "edge - ",to," <--- ", from
+    @show "edge - ",to," <--- ", from
     @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0))    
     # @show tape.bh
 end
@@ -248,7 +248,7 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
 end
 
 @inline function update(tape,to,from,w)
-    # @show "update - ", to, "<-- ", from, w
+    @show "update - ", to, "<-- ", from, w
     @inbounds tape.bh_idxes[to] += 1  
     # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
     @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
@@ -319,201 +319,264 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             i_idx = idx + tape.nvar
             idx -= 1
             @inbounds i_num = tape.node_idx_to_number[i_idx]
-            #pushing   
-            # @show "pushing ",i_idx,op_sym,n
             @inbounds lvi = tape.bh[i_num]
-            for j = 1:length(lvi)
-                # @inbounds (p_idx,w) = liv[j]
-                @inbounds p = lvi[j]
-                p_idx = p.i
-                w = p.w
-                @inbounds p_num = tape.node_idx_to_number[p_idx]
-                if p_idx == i_idx
-                    if n==1 #&& op_sym != :-
-                        @inbounds ci_idx = tr[trlen] + tape.nvar
-                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
-                        update(tape,ci_num,ci_idx,w_bar)
-                    elseif op_sym == :+
-                        for j0=trlen - n + 1:trlen
-                            @inbounds ci_idx = tr[j0] + tape.nvar
-                            @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                            update(tape,ci_num,ci_idx,w)
-                            for j1=j0+1:trlen
-                                @inbounds cii_idx = tr[j1] + tape.nvar
-                                @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                                update(tape,cii_num,ci_idx,w)
-                            end  #j1 += 1
-                        end  #j0 += 1
-                    elseif op_sym == :-
-                        @inbounds li_idx = tr[trlen-1] + tape.nvar
-                        @inbounds li_num = tape.node_idx_to_number[li_idx]
-                        @inbounds ri_idx = tr[trlen] + tape.nvar
-                        @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                        update(tape,li_num,li_idx,w)
-                        update(tape,ri_num,ri_idx,w)
-                        update(tape,ri_num,li_idx,-1.0*w)
-                    elseif op_sym == :*
-                        k = immlen - round(I,n+n*(n-1)/2)+1
-                        for j0=trlen-n+1:trlen
-                            @inbounds ci_idx = tr[j0] + tape.nvar
-                            @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                            @inbounds w_bar0 = imm[k] * imm[k] * w
-                            update(tape,ci_num,ci_idx,w_bar0)
-                            k0 = k + 1
-                            for j1=j0+1:trlen
-                                @inbounds cii_idx = tr[j1] + tape.nvar
-                                @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                                @inbounds w_bar1 = imm[k]*imm[k0]*w
-                                update(tape,cii_num,ci_idx,w_bar1)
-                                k0 += 1
-                            end
-                            k += 1
-                        end
-                    else #other binary
-                        @inbounds li_idx = tr[trlen-1] + tape.nvar
-                        @inbounds li_num = tape.node_idx_to_number[li_idx]
-                        @inbounds ri_idx = tr[trlen] + tape.nvar
-                        @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                        @inbounds dl = imm[immlen-4]
-                        @inbounds dr = imm[immlen-3]
-                        update(tape,li_num,li_idx,dl*dl*w)
-                        update(tape,ri_num,li_idx,dl*dr*w)
-                        update(tape,ri_num,ri_idx,dr*dr*w)
-                    end
-                else   #when p_idx != i_idx
-                    if(n==1)
-                        @inbounds ci_idx = tr[trlen] + tape.nvar
-                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        # @inbounds w_bar = imm[immlen-1]*imm[immlen-1]*w
-                        @inbounds w_bar = imm[immlen-1]*w
-                        update(tape,ci_num,p_idx,w_bar)
+            @inbounds tr0_idx = tr[trlen] + tape.nvar
+            @inbounds tr0_num = tape.node_idx_to_number[tr0_idx]
+            
+            imm_counter = zero(I)
+
+            if n==1
+                #pushing
+                @inbounds t0 = imm[immlen-1]
+                for j=1:length(lvi)
+                    @inbounds p = lvi[j]
+                    p_idx = p.i
+                    w = p.w
+                    # @inbounds p_num = tape.node_idx_to_number[p_idx]
+                    if p_idx == i_idx                       
+                        w_bar = t0*t0*w
+                        update(tape,tr0_num,tr_idx,w_bar)     
                     else
-                        if(op_sym==:+)
+                        w_bar = t0*w
+                        update(tape,tr0_num,tr_idx,w_bar)
+                    end
+                end
+                #creating
+                if(op_sym != :-)
+                    @inbounds w = adj*imm[immlen]
+                    update(tape,tr0_num,tr0_idx,w)
+                end
+
+                #updating 
+                adjlen += 1
+                @inbounds adjs[adjlen] = imm[immlen-1]*adj
+                imm_counter = 2
+            elseif n == 2
+                @inbounds li_idx = tr[trlen-1] + tape.nvar
+                @inbounds li_num = tape.node_idx_to_number[li_idx]
+
+                if op_sym == :/
+                    #pushing
+                    @inbounds dl = imm[immlen-4]
+                    @inbounds dr = imm[immlen-3]
+                    
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                    
+                        dlw = dl*w
+                        drw = dr*w
+                        if p_idx == i_idx
+                            update(tape,li_num,li_idx,dl*dlw)
+                            update(tape,tr0_num,li_idx,dl*drw)
+                            update(tape,tr0_num,tr0_idx,dr*drw)
+                        else 
+                            update(tape,li_num,p_idx,dlw)
+                            update(tape,tr0_num,p_idx,drw)
+                        end
+                    end
+                    #creating
+                    @inbounds dll = imm[immlen-2]
+                    @inbounds dlr = imm[immlen-1]
+                    @inbounds drr = imm[immlen]
+                    update(tape,tr0_num,li_idx,adj*dlr)
+                    update(tape,tr0_num,tr0_idx,adj*drr)
+                    
+                    #updating
+                    imm_counter = 5
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dl*adj
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dr*adj
+                elseif op_sym == :*
+                    #pushing
+                    @inbounds dl = imm[immlen-4]
+                    @inbounds dr = imm[immlen-3]
+                    
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                    
+                        dlw = dl*w
+                        drw = dr*w
+                        if p_idx == i_idx
+                            update(tape,li_num,li_idx,dl*dlw)
+                            update(tape,tr0_num,li_idx,dl*drw)
+                            update(tape,tr0_num,tr0_idx,dr*drw)
+                        else 
+                            update(tape,li_num,p_idx,dlw)
+                            update(tape,tr0_num,p_idx,drw)
+                        end
+                    end
+                    #creating
+                    update(tape,tr0_num,li_idx,adj)  #adj*1.0
+                    
+                    #updating
+                    imm_counter = 3
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dl*adj
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dr*adj
+                elseif  op_sym == :-
+                    #pushing
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                        if p_id == i_idx
+                            update(tape,li_num,li_idx,w)
+                            update(tape,tr0_num,li_idx,-1.0*w)
+                            update(tape,tr0_num,tr0_idx,w)
+                        else
+                            update(tape,li_num,p_idx,w)
+                            update(tape,tr0_num,p_idx,-1.0*w)
+                        end
+                    end
+                    #creating
+                        #zeros
+
+                    #updating
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = adj
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = -1.0*adj
+                    imm_counter = 0
+                else  #other binary ops
+                    #pushing
+                    @inbounds dl = imm[immlen-4]
+                    @inbounds dr = imm[immlen-3]
+                    
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                    
+                        dlw = dl*w
+                        drw = dr*w
+                        if p_idx == i_idx
+                            update(tape,li_num,li_idx,dl*dlw)
+                            update(tape,tr0_num,li_idx,dl*drw)
+                            update(tape,tr0_num,tr0_idx,dr*drw)
+                        else 
+                            update(tape,li_num,p_idx,dlw)
+                            update(tape,tr0_num,p_idx,drw)
+                        end
+                    end
+                    #creating
+                    @inbounds dll = imm[immlen-2]
+                    @inbounds dlr = imm[immlen-1]
+                    @inbounds drr = imm[immlen]
+                    update(tape,li_num,li_idx,adj*dll)
+                    update(tape,tr0_num,li_idx,adj*dlr)
+                    update(tape,tr0_num,tr0_idx,adj*drr)
+
+                    #updating
+                    imm_counter = 5
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dl*adj
+                    adjlen += 1
+                    @inbounds adjs[adjlen] = dr*adj
+                end  #end else binary ops
+            else  #other + or * with n - operands
+                if op_sym == :+
+                    #pushing
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                        # @inbounds p_num = tape.node_idx_to_number[p_idx]
+                        if p_idx == i_idx     
+                            for j0=trlen-n+1:trlen
+                                @inbounds ci_idx =tr[j0] + tape.nvar
+                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                update(tape,ci_num,ci_idx,w)
+                                for j1=j0+1:trlen
+                                    @inbounds cii_idx = tr[j1] + tape.nvar
+                                    @inbounds cii_num = tape.node_idx_to_number[cii_idx]
+                                    update(tape,cii_num,ci_idx,w)
+                                end #j1 +=1
+                            end #j0+=1
+                        else #p_idx != i_idx
                             for k=trlen-n+1:trlen
                                 @inbounds ci_idx = tr[k] + tape.nvar
                                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
                                 # @show ci_idx , ci_num, p_idx, w
                                 update(tape,ci_num,p_idx,w)
                             end
-                        elseif(op_sym==:-)
-                            assert(n==2)
-                            @inbounds li_idx = tr[trlen-1] + tape.nvar
-                            @inbounds li_num = tape.node_idx_to_number[li_idx]
-                            @inbounds ri_idx = tr[trlen] + tape.nvar
-                            @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                            update(tape,li_num,p_idx,w)
-                            update(tape,ri_num,p_idx,-1.0*w)
-                        elseif(op_sym == :*)
-                            j = immlen - round(I,n+n*(n-1)/2)+1
-                            for k=trlen -n+1:trlen
-                                @inbounds ci_idx = tr[k] + tape.nvar
-                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                                @inbounds w_bar = imm[j] * w
-                                update(tape,ci_num,p_idx,w_bar)
-                                j += 1
-                            end
-                        else #other binary
-                            @inbounds li_idx = tr[trlen-1] + tape.nvar
-                            @inbounds li_num = tape.node_idx_to_number[li_idx]
-                            @inbounds ri_idx = tr[trlen] + tape.nvar
-                            @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                            @inbounds dl = imm[immlen-4]
-                            @inbounds dr = imm[immlen-3]
-                            update(tape,li_num,p_idx,dl*w)
-                            update(tape,ri_num,p_idx,dr*w)
                         end
                     end
-                end #end p_idx == i_idx
-            end
+                    #creating
+                        #zero
 
-            #creating
-            # @show "creating ",i_idx,op_sym,n
-            if(n==1 && op_sym!=:-) #1-ary op
-                @inbounds ci_idx = tr[trlen] + tape.nvar
-                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                @inbounds w = adj*imm[immlen]
-                update(tape,ci_num,ci_idx,w)
-            elseif(op_sym == :+ || op_sym ==:-)
-                #zeros
-            elseif(op_sym == :*)
-                k = immlen - round(I,n*(n-1)/2)+1
-                for j0=trlen-n+1:trlen
-                    @inbounds ci_idx = tr[j0]+tape.nvar
-                    @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                    for j1=j0+1:trlen
-                        @inbounds cii_idx = tr[j1]+tape.nvar
-                        @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                        @inbounds w = adj*imm[k]
-                        update(tape,cii_num,ci_idx,w)
+                    #updating
+                    for j=1:n
+                        adjlen += 1
+                        @inbounds adjs[adjlen] = adj
+                    end
+                elseif op_sym == :*
+                    #pushing        
+                    r = immlen - round(I,n+n*(n-1)/2)+1        
+                    for j = 1:length(lvi)
+                        @inbounds p = lvi[j]
+                        p_idx = p.i
+                        w = p.w
+                        
+                        k = r
+                        if p_idx == i_idx
+                            for j0=trlen-n+1:trlen
+                                @inbounds ci_idx = tr[j0] + tape.nvar
+                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                @inbounds t0 = imm[k]
+                                t1 = t0*w
+                                @inbounds w_bar0 = t0 * t1
+                                update(tape,ci_num,ci_idx,w_bar0)
+                                k0 = k + 1
+                                for j1=j0+1:trlen
+                                    @inbounds cii_idx = tr[j1] + tape.nvar
+                                    @inbounds cii_num = tape.node_idx_to_number[cii_idx]
+                                    @inbounds w_bar1 = t1*imm[k0]
+                                    update(tape,cii_num,ci_idx,w_bar1)
+                                    k0 += 1
+                                end
+                                k += 1
+                            end
+                        else #p_idx != i_idx 
+                            for j=trlen -n+1:trlen
+                                @inbounds ci_idx = tr[j] + tape.nvar
+                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                @inbounds w_bar = imm[k] * w
+                                update(tape,ci_num,p_idx,w_bar)
+                                k += 1
+                            end
+                        end
+                    end
+                    #creating
+                    k = r
+                    for j0=trlen-n+1:trlen
+                        @inbounds ci_idx = tr[j0]+tape.nvar
+                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                        for j1=j0+1:trlen
+                            @inbounds cii_idx = tr[j1]+tape.nvar
+                            @inbounds cii_num = tape.node_idx_to_number[cii_idx]
+                            @inbounds w = adj*imm[k]
+                            update(tape,cii_num,ci_idx,w)
+                            k+=1
+                        end
+                    end
+
+                    #updating
+                    k = r
+                    for j=1:n
+                        adjlen += 1
+                        # @show j,imm[j],adj
+                        @inbounds adjs[adjlen] = imm[k] * adj
                         k+=1
                     end
+                    imm_counter = immlen - r + 1
                 end
-            elseif(op_sym == :/)
-                @inbounds ri_idx = tr[trlen] + tape.nvar
-                @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                @inbounds li_idx = tr[trlen-1] + tape.nvar
-                @inbounds li_num = tape.node_idx_to_number[li_idx]
-                # @inbounds dll = imm[immlen-2]
-                @inbounds dlr = imm[immlen-1]
-                @inbounds drr = imm[immlen]
-                update(tape,ri_num,li_idx,adj*dlr)
-                update(tape,ri_num,ri_idx,adj*drr)
-            else #other binary
-                # assert(n == 2)
-                @inbounds ri_idx = tr[trlen] + tape.nvar
-                @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                @inbounds li_idx = tr[trlen-1] + tape.nvar
-                @inbounds li_num = tape.node_idx_to_number[li_idx]
-                @inbounds dll = imm[immlen-2]
-                @inbounds dlr = imm[immlen-1]
-                @inbounds drr = imm[immlen]
-                update(tape,li_num,li_idx,adj*dll)
-                update(tape,ri_num,li_idx,adj*dlr)
-                update(tape,ri_num,ri_idx,adj*drr)
             end
-
-            #update adjoints
-            # @show adjlen, adjs
-            imm_counter = zero(I)
-            if n==1
-                adjlen += 1
-                @inbounds adjs[adjlen] = imm[immlen-1]*adj
-                imm_counter = 2
-            elseif op_sym == :+
-                for j=1:n
-                    adjlen += 1
-                    @inbounds adjs[adjlen] = adj
-                end
-            elseif op_sym == :-
-                adjlen += 1
-                @inbounds adjs[adjlen] = adj
-                adjlen += 1
-                @inbounds adjs[adjlen] = -1.0*adj
-            elseif op_sym == :*
-                j = immlen - round(I,n+n*(n-1)/2)+1
-                for m=1:n
-                    adjlen += 1
-                    # @show j,imm[j],adj
-                    @inbounds adjs[adjlen] = imm[j] * adj
-                    j+=1
-                end
-                imm_counter = round(I,n+n*(n-1)/2)
-            else #other binary
-                # assert(n==2)
-                adjlen += 1
-                @inbounds adjs[adjlen] = imm[immlen-4]*adj
-                adjlen += 1
-                @inbounds adjs[adjlen] = imm[immlen-3]*adj
-                imm_counter = 5
-            end #end creating
-            # @show adjlen, adjs
-          
-            # @show OP[oc],n
-            # @show trlen
-            # @show immlen,imm_counter
-            # @show tr
-            # @show imm
 
             #update counters
             trlen -= n
