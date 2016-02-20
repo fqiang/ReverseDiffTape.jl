@@ -493,7 +493,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dll = imm[immlen-2]
                     @inbounds dlr = imm[immlen-1]
                     @inbounds drr = imm[immlen]
-                    @show li_num, li_idx, adj, dll
+                    #@show li_num, li_idx, adj, dll
                     update(tape,li_num,li_idx,adj*dll)
                     update(tape,tr0_num,li_idx,adj*dlr)
                     update(tape,tr0_num,tr0_idx,adj*drr)
