@@ -19,7 +19,7 @@ function report(m)
     jeval_hesslag = 0.0
 
     TapeInterface.reset_timer(m.internalModel.evaluator)
-    for i=1:10
+    for i=1:5
     	solve(m)
     	eval_f += m.internalModel.evaluator.eval_f_timer
         eval_g += m.internalModel.evaluator.eval_g_timer

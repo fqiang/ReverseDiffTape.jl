@@ -1,5 +1,6 @@
 #temp2.jl
 include("test_small.jl") 
+
 using ReverseDiffTape
 
 jd = JuMPNLPEvaluator(m)
@@ -20,6 +21,54 @@ end
 
 ReverseDiffTape.hess_structure2(tt)
 ReverseDiffTape.hess_reverse2(tt,x,p)
+
+####Profile hessian ep2
+
+@profile (
+       for i=1:100
+       ReverseDiffTape.prepare_reeval_hess2(tt); ReverseDiffTape.hess_reverse2(tt,x,p)
+       end
+       )
+prof = open("./hess_reverse_ep2.prof","w")
+Profile.print(prof,cols = 500)
+close(prof)
+
+@profile (
+       for i=1:100
+       ReverseDiffTape.reset_hess2(tt); ReverseDiffTape.hess_structure2(tt)
+       end
+       )
+prof = open("./hess_struct_ep2.prof","w")
+Profile.print(prof,cols = 500)
+close(prof)
+
+##########
+# for the econ model
+jd = JuMPNLPEvaluator(m)
+MathProgBase.initialize(jd,[:ExprGraph])
+using ReverseDiffTape
+
+nl_idxes = Vector{Int}()
+for i =1:MathProgBase.numconstr(m)
+    if !MathProgBase.isconstrlinear(jd,i) 
+        push!(nl_idxes,i)
+    end
+end
+constr_tts = Vector{Tape{Int,Float64}}(length(nl_idxes))
+
+pvals = Vector{Float64}()
+i = 1
+# for i =1:length(nl_idxes)
+	conexpr = MathProgBase.constr_expr(jd,nl_idxes[i]);
+	j = length(conexpr.args)==3?1:3
+	constr_tts[i] = Tape{Int,Float64}();
+	tapeBuilder(conexpr.args[j], constr_tts[i], pvals)
+# end
+
+
+
+#########
+
 
 jg=zeros(length(x))
 MathProgBase.eval_grad_f(jd,jg,x)

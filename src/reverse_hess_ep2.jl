@@ -243,14 +243,14 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
     # assert(tape.imm2ord>=immlen)
     tape.imm2ordlen = immlen
     # @show stklen
-    # resize!(imm,immlen) #if not resize memory will be hold in julia , and not claimed by gc
+    resize!(tape.imm,max(tape.imm1ordlen,tape.imm2ordlen)) #if not resize memory will be hold in julia , and not claimed by gc
     return @inbounds stk[1]
 end
 
 @inline function update(tape,to,from,w)
     # @show "update - ", to, "<-- ", from, w
+    # # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
     @inbounds tape.bh_idxes[to] += 1  
-    # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
     @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
 end
 
@@ -644,12 +644,9 @@ function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
 end
 
 function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
-    # tic()
+    # @time forward_pass2_2ord(tape,vvals,pvals)
+    # @time reverse_pass2_2ord(tape,factor)
+
     forward_pass2_2ord(tape,vvals,pvals)
-    # f_t = toq()
-    # @show f_t
     reverse_pass2_2ord(tape,factor)
-    # tic()
-    # r_t = toq()
-    # @show r_t
 end

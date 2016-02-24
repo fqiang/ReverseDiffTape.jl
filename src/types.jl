@@ -180,8 +180,9 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     idx = one(I)
     istk = Vector{I}()
     v_idx_max = zero(I)
-    immlen_max = zero(I)  # for sure >= 2ord 1ord
-    
+    immlen_2nd = zero(I)  # for sure >= 2ord 1ord
+   	immlen_1st = zero(I)
+ 
     node_idxes = Vector{I}()
     node_numbers = Vector{I}()
     @inbounds while(idx <= length(tt))
@@ -199,10 +200,23 @@ function analysize_tape{I,V}(tape::Tape{I,V})
             push!(istk,idx-3)
             node_idx = idx - 3
         elseif(ntype == TYPE_O)
+			@inbounds op_sym = OP[tt[idx]]
             idx += 1  #skip oc
             @inbounds n = tt[idx]
             idx += 2  #skip TYPE_O
-            immlen_max += n + round(I,(n+1)*n/2)  #max estimation
+			if n==1
+				immlen_2nd += 2 
+			else
+				if op_sym==:*
+            		immlen_2nd += div(n*(n+1),2)  #max estimation
+				elseif op_sym == :+ || op_sym ==:-	
+					immlen_2nd += 0
+				else
+					immlen_2nd += 5
+				end
+			end
+			immlen_1st += n			
+
             tape.maxoperands = max(n,tape.maxoperands)
             
             tape.fstkmax = max(tape.fstkmax,length(istk))
@@ -236,7 +250,8 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     end
 
     # init
-    resize!(tape.imm, immlen_max)
+	@show max(immlen_1st,immlen_2nd)
+    resize!(tape.imm, max(immlen_1st,immlen_2nd))
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
@@ -384,7 +399,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
             end
         end
     else
-        println("error !")
+        @show "error !"
         dump(expr)
         assert(false)
     end
@@ -414,3 +429,65 @@ end
 
 ##########################################################################################
 
+function report_tape_mem{I,V}(tape::Tape{I,V})
+    si = sizeof(I)
+    sf = sizeof(V)
+    i  = 0
+    tb = 0
+
+    tb_now = length(tape.tt) * si
+    @show "tape ", length(tape.tt), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.stk) *si
+    @show "stk ", length(tape.stk), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.g_I) * si + length(tape.g)*sf + 1*si
+    tb += tb_now
+    
+    tb_now = length(tape.h_I) * si + length(tape.h_J) * si + length(tape.hess)*sf+ 1*si
+    tb += tb_now
+    @show " hessian nnz", length(tape.h_I)
+
+    tb_now = sizeof(tape.node_idx_to_number)
+    tb_now += length(tape.node_idx_to_number.nzval)  * sf
+    tb_now += length(tape.node_idx_to_number.colptr)  * si
+    tb_now += length(tape.node_idx_to_number.rowval) * si
+    tb + tb_now
+
+
+    tb_now = sizeof(tape.bh)
+    for j = 1:length(tape.bh)
+        tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
+        tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
+    end
+    @show "bh - bytes ", tb_now
+    tb += tb_now
+
+    tb_now = length(tape.bh_idxes) * si
+    @show "bh_idxes ", length(tape.bh_idxes), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.imm) * sf
+    @show "imm ", length(tape.imm), tb_now,  "needed length " , tape.imm2ordlen
+    tb += tb_now
+
+    tb += 2*si #imm1ordlen , imm2ordlen
+
+    tb_now = length(tape.tr) * si
+    @show "tr ",length(tape.tr), tb_now
+    tb += tb_now
+    tb += 1*si  #trlen
+
+    tb += 5* si #nvar, nvnode, nnode, maxoperands, fstkmax
+
+    @show " tape = ", tb ," bytes"
+
+    tb_ep1 = sizeof(tape.eset)
+    tb_ep1 += sizeof(tape.liveVar)
+    tb_ep1 += sizeof(tape.h)
+    @show " with ep1 data ", tb_ep1, " bytes "
+
+    return tb+tb_ep1
+end
