@@ -22,6 +22,7 @@ export
     grad_reverse,  grad_structure,
     hess_structure_lower, hess_reverse, clean_hess_eset,
     hess_structure2, hess_reverse2, reset_hess2, prepare_reeval_hess2,
+    hess_structure3, hess_reverse3, reset_hess3, prepare_reeval_hess3,
     report_tape_mem
 
 
@@ -38,5 +39,6 @@ include("./func_eval.jl")
 include("./reverse_grad.jl")
 include("./reverse_hess_ep.jl")
 include("./reverse_hess_ep2.jl")
+include("./reverse_hess_ep3.jl")
 
 end # module

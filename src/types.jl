@@ -89,6 +89,8 @@ type Tape{I,V}
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
 
+    bh3::Vector{Dict{I,V}} 
+
     imm::Vector{V}
     imm1ordlen::I
     imm2ordlen::I
@@ -99,6 +101,7 @@ type Tape{I,V}
     eset::Dict{I,Dict{I,V}}
     liveVar::Dict{I,Set{I}}
     h::Dict{I,Dict{I,V}}
+
 
     nvar::I
     nvnode::I
@@ -122,6 +125,8 @@ type Tape{I,V}
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
+
+            Vector{Dict{I,V}}(), #bh3
 
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -155,6 +160,8 @@ type Tape{I,V}
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
+
+            Vector{Dict{I,V}}(), #bh3
 
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -243,10 +250,17 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     # @show node_idxes,node_numbers
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
+    # used by ep2
     tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar);
     tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
     for i=1:tape.nnode+tape.nvar 
         @inbounds tape.bh[i] = Vector{mPair{Int,Float64}}();
+    end
+
+    # used by ep3
+    tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
+    for i=1:tape.nnode + tape.nvar
+        @inbounds tape.bh3[i] = Dict{Int,Float64}();
     end
 
     # init
@@ -344,6 +358,7 @@ end
 
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
     # @show expr
+    assert(length(tape.tt)==0)
     istk = Vector{I}()
     tapeBuilder(expr,tape, pvals, istk)
     analysize_tape(tape)
