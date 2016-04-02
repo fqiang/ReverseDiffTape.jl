@@ -14,7 +14,7 @@ end
 
 function prepare_reeval_hess3(tape)
     for i=1:tape.nnode+tape.nvar
-        d = tape.hb3[i]
+        d = tape.bh3[i]
         for k in keys(d)
             d[k] = 0.0
         end
