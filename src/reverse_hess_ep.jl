@@ -46,6 +46,7 @@ end
 end
 
 function hess_struct{I,V}(tape::Tape{I,V})
+    tape.h_type = 1
     tt = tape.tt
     tr = tape.tr
     idx = length(tt)

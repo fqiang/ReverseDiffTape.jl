@@ -24,6 +24,7 @@ end
 end
 
 function hess_struct2{I,V}(tape::Tape{I,V})
+    tape.h_type = 2
     if(tape.nzh != -1)
         return tape.nzh
     end

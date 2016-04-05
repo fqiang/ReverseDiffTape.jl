@@ -4,7 +4,7 @@ h_rev = [hess_reverse2, hess_reverse3];
 
 for i=1:2
 
-facts("Hessian EP algorithm x1^2*x2^2") do
+facts("Hessian EP$i algorithm x1^2*x2^2") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -24,7 +24,7 @@ facts("Hessian EP algorithm x1^2*x2^2") do
     @fact h[2 , 2] --> 1.1*1.1*2 
 end
 
-facts("Hessian EP algorithm sin(x1)") do
+facts("Hessian EP$i algorithm sin(x1)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -40,7 +40,7 @@ facts("Hessian EP algorithm sin(x1)") do
 end
 
 
-facts("Hessian EP algorithm cos(x1)") do
+facts("Hessian EP$i algorithm cos(x1)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -54,7 +54,7 @@ facts("Hessian EP algorithm cos(x1)") do
     @fact h[1 , 1] --> -cos(1.1) 
 end
 
-facts("Hessian EP algorithm x1*x2") do
+facts("Hessian EP$i algorithm x1*x2") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -69,7 +69,7 @@ facts("Hessian EP algorithm x1*x2") do
 end
 
 
-facts("Hessian EP algorithm sin(x1*x2)") do
+facts("Hessian EP$i algorithm sin(x1*x2)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -86,7 +86,7 @@ facts("Hessian EP algorithm sin(x1*x2)") do
     @fact h[2 , 2] --> -1.1^2*sin(1.1*2.2)
 end
 
-facts("Hessian EP algorithm cos(sin(x1))") do
+facts("Hessian EP$i algorithm cos(sin(x1))") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -100,7 +100,7 @@ facts("Hessian EP algorithm cos(sin(x1))") do
 end
 
 
-facts("Hessian EP algorithm cos(sin(x1*x2))") do
+facts("Hessian EP$i algorithm cos(sin(x1*x2))") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -114,7 +114,7 @@ facts("Hessian EP algorithm cos(sin(x1*x2))") do
     @fact h[1 , 1] --> roughly(2.2^2*sin(sin(1.1*2.2))*sin(1.1*2.2)-2.2^2*cos(sin(1.1*2.2))*cos(1.1*2.2)^2)
 end
 
-facts("Hessian EP algorithm x1*x1") do
+facts("Hessian EP$i algorithm x1*x1") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -127,7 +127,7 @@ facts("Hessian EP algorithm x1*x1") do
     @fact h[1 , 1] --> 2.0
 end
 
-facts("Hessian EP algorithm x1*x1*x2*x2") do
+facts("Hessian EP$i algorithm x1*x1*x2*x2") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -144,7 +144,7 @@ facts("Hessian EP algorithm x1*x1*x2*x2") do
     @fact h[2 , 2] --> 1.1*1.1*2 
 end
 
-facts("Hessian EP algorithm x1*x1*x1") do
+facts("Hessian EP$i algorithm x1*x1*x1") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -158,7 +158,7 @@ facts("Hessian EP algorithm x1*x1*x1") do
     @fact h[1 , 1] --> 6*1.1
 end
 
-facts("Hessian EP algorithm cos(x1*x2)") do
+facts("Hessian EP$i algorithm cos(x1*x2)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -174,7 +174,7 @@ facts("Hessian EP algorithm cos(x1*x2)") do
     @fact h[2 , 2] -->  -cos(1.1*2.2)*1.1*1.1 
 end
 
-facts("Hessian EP algorithm y=sin(x1) + cos(x2^p2) ") do
+facts("Hessian EP$i algorithm y=sin(x1) + cos(x2^p2) ") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -190,7 +190,7 @@ facts("Hessian EP algorithm y=sin(x1) + cos(x2^p2) ") do
     @fact h[2,2] --> -( 2*2*2.2*2.2*cos(2.2*2.2) + 2*sin(2.2*2.2) )
 end
 
-facts("Hessian EP algorithm y=sin(x1) + cos(x2^p2) ") do
+facts("Hessian EP$i algorithm y=sin(x1) + cos(x2^p2) ") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -206,7 +206,7 @@ facts("Hessian EP algorithm y=sin(x1) + cos(x2^p2) ") do
     @fact h[2,1] --> 1.0
 end
 
-facts("Hessian EP algorithm y=x1/x2 + x1/(x1+x2)") do
+facts("Hessian EP$i algorithm y=x1/x2 + x1/(x1+x2)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -233,7 +233,7 @@ facts("Hessian EP algorithm y=x1/x2 + x1/(x1+x2)") do
     @fact h[2,2] --> roughly(hess[3])
 end
 
-facts("Hessian EP algorithm y=exp(x1+x2+x3)*exp(x1*x2*x3)") do
+facts("Hessian EP$i algorithm y=exp(x1+x2+x3)*exp(x1*x2*x3)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -270,7 +270,7 @@ facts("Hessian EP algorithm y=exp(x1+x2+x3)*exp(x1*x2*x3)") do
     @fact h[3,3] --> roughly(hess[6])
 end
 
-facts("y=x1*(p2*x1+p2*x2)") do
+facts("Hessian EP$i algorithm y=x1*(p2*x1+p2*x2)") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x,1.1)
@@ -286,7 +286,7 @@ facts("y=x1*(p2*x1+p2*x2)") do
     @fact h[2,1] --> 2.0
 end
 
-facts("Hessian EP algorithm sin(x1)+cos(x2^2)*1-x3*2") do
+facts("Hessian EP$i algorithm sin(x1)+cos(x2^2)*1-x3*2") do
     p = Vector{Float64}()
     x = Vector{Float64}()
     x1 = AD_V(x, 1.1)
