@@ -186,11 +186,9 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     if(d.init == -1)
         tic()
     	objexpr = MathProgBase.obj_expr(jd)
-        # @show objexpr
        
     	assert(length(d.pvals) == 0)  ## assume no values in pvals
     	tapeBuilder(objexpr,d.obj_tt,d.pvals)
-        
         # hesslag_expr = AD(d.obj_tt.tt)*AD_P(d.p,1.0)
 
         for i =1:d.numConstr
@@ -274,9 +272,8 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     d.eval_grad_f_timer += toq()
 
     for i=1:length(tape.g_I)
-        @inbounds g[tape.g_I[i]] = tape.g[i]
+        @inbounds g[tape.g_I[i]] += tape.g[i]
     end
-   
     assertArrayEqualEps(g,d.jgrad_f)
     d.grad_f_times += 1
     return
@@ -300,7 +297,7 @@ function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     d.eval_g_timer += toq()
     
     # @show g,jg
-    assertArrayEqualEps(g,jg)
+    assertArrayEqualEps(g,d.jg)
     d.g_times += 1
     return
 end
@@ -475,10 +472,10 @@ function MathProgBase.eval_hesslag(
     # H = d.laghess_tt.hess
     # d.eval_hesslag_timer += toq()
 
-    # csc = sparse(d.laghess_I,d.laghess_J,H)
-    # jcsc = sparse(d.jd.hess_I,d.jd.hess_J,jH)
+    csc = sparse(d.laghess_I,d.laghess_J,H)
+    jcsc = sparse(d.jd.hess_I,d.jd.hess_J,d.jlaghess_h)
    
-    # matrixEqaul(csc,jcsc)
+    matrixEqaul(csc,jcsc)
     # @show d.eval_hesslag_timer
     # @show d.jd.eval_hesslag_timer
     d.hesslag_times += 1

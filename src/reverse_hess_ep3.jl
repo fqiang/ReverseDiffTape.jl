@@ -1,7 +1,7 @@
 #edge pusing algorithm for Hessian reverse AD
 
 function reset_hess3(tape)
-    assert(length(tape.bh3) == tape.nnode+tape.nvar)  
+    @assert length(tape.bh3) == tape.nnode+tape.nvar
     for i=1:tape.nnode+tape.nvar 
         empty!(tape.bh3[i])
     end
@@ -38,7 +38,7 @@ function hess_struct3{I,V}(tape::Tape{I,V})
     idx = length(tt)
     trlen = length(tr)
     # @show tape.nnode-1, length(tr)
-    assert(tape.nnode-1 == length(tr))
+    @assert tape.nnode-1 == length(tr)
     
     while (idx > 0)
         @inbounds ntype = tt[idx]
@@ -54,7 +54,7 @@ function hess_struct3{I,V}(tape::Tape{I,V})
             #pushing edges pointing to this v node to the independent variables below
             # @show "pushing ", i_idx
             @inbounds i_num = tape.node_idx_to_number[i_idx]
-            assert(i_num!=0 && v_idx <= tape.nvar)
+            @assert i_num!=0 && v_idx <= tape.nvar
             @inbounds d = tape.bh3[i_num]
             for p_idx in keys(d)
                 # @inbounds (p_idx,w) = lvi[j]
@@ -79,25 +79,25 @@ function hess_struct3{I,V}(tape::Tape{I,V})
             i_idx = idx  + tape.nvar #node i's idx on tape
             # @show "pushing",i_idx
             @inbounds i_num = tape.node_idx_to_number[i_idx]  #node i's number
-            assert(i_num!=0)
+            @assert i_num!=0
             idx -= 1
             @inbounds d = tape.bh3[i_num]
             for p_idx in keys(d)
                 # @inbounds (p_idx,w) = lvi[j] #index of node p
                 @inbounds p_num = tape.node_idx_to_number[p_idx]
-                assert(p_num!=0)
+                @assert p_num!=0
                 if(p_idx == i_idx)
                     for j0=trlen-n+1:trlen 
                         @inbounds ci_idx = tr[j0] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        assert(ci_num!=0)
+                        @assert ci_num!=0
                         # push!(tape.live_vars[ci_num],ci_idx)
                         push_edge3(tape,ci_num,ci_idx)
                         for j1=j0+1:trlen
                             @inbounds cii_idx = tr[j1] + tape.nvar
                             @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                            assert(cii_num!=0)
-                            assert(ci_idx < cii_idx)
+                            @assert cii_num!=0
+                            @assert ci_idx < cii_idx
                             # push!(tape.live_vars[cii_num],ci_idx)    # ci_idx -> cii_idx, will handle cii_idx first
                             push_edge3(tape,cii_num,ci_idx)
                         end
@@ -106,7 +106,7 @@ function hess_struct3{I,V}(tape::Tape{I,V})
                     for j0 = trlen -n + 1:trlen
                         @inbounds ci_idx = tr[j0] + tape.nvar
                         @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        assert(p_idx <= ci_idx)             
+                        @assert p_idx <= ci_idx           
                         # push!(tape.live_vars[ci_num],p_idx)    #p_idx -> ci_idx
                         push_edge3(tape,ci_num,p_idx)
                     end
@@ -123,7 +123,7 @@ function hess_struct3{I,V}(tape::Tape{I,V})
             elseif (n == 1 && op_sym != :-) #1-ary operator
                 @inbounds ci_idx = tr[trlen] + tape.nvar
                 @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                assert(ci_num!=0)
+                @assert ci_num!=0
                 # push!(tape.live_vars[ci_num],ci_idx)
                 push_edge3(tape,ci_num,ci_idx)
             elseif (op_sym == :*)
@@ -131,40 +131,40 @@ function hess_struct3{I,V}(tape::Tape{I,V})
                 for j0 = trlen -n + 1:trlen
                     @inbounds ci_idx = tr[j0] + tape.nvar
                     @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                    assert(ci_num!=0)
+                    @assert ci_num!=0
                     for j1=j0+1:trlen
                         @inbounds cii_idx = tr[j1] + tape.nvar
                         @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                        assert(cii_num!=0)
-                        assert(ci_idx < cii_idx)
+                        @assert cii_num!=0
+                        @assert ci_idx < cii_idx
                         # push!(tape.live_vars[cii_num],ci_idx)
                         push_edge3(tape,cii_num,ci_idx)
                         # @show "push ",cii_num, cii_idx, "<--", ci_idx
                     end
                 end 
             elseif (op_sym == :/) # binary operator /
-                # assert(false) #not tested , --- not implemented in operator
-                assert(n==2)
+                # @assert false) #not tested , --- not implemented in operator
+                @assert n==2
                 @inbounds ri_idx = tr[trlen] + tape.nvar
                 @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                assert(ri_num!=0)
+                @assert ri_num!=0
                 @inbounds li_idx = tr[trlen-1] + tape.nvar
                 @inbounds li_num = tape.node_idx_to_number[li_idx]
-                assert(li_num!=0) 
-                assert(li_idx < ri_idx)
+                @assert li_num!=0
+                @assert li_idx < ri_idx
                 # push!(tape.live_vars[ri_num],li_idx)
                 push_edge3(tape,ri_num,li_idx)
                 # push!(tape.live_vars[ri_num],ri_idx)
                 push_edge3(tape,ri_num,ri_idx)
             else # other binary
-                assert(n==2)
+                @assert n==2
                 @inbounds ri_idx = tr[trlen] + tape.nvar
                 @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                assert(ri_num!=0)
+                @assert ri_num!=0
                 @inbounds li_idx = tr[trlen-1] + tape.nvar
                 @inbounds li_num = tape.node_idx_to_number[li_idx]
-                assert(li_num!=0)
-                assert(li_idx < ri_idx)
+                @assert li_num!=0
+                @assert li_idx < ri_idx
                 # push!(tape.live_vars[ri_num],ri_idx)
                 push_edge3(tape,li_num,li_idx)
                 # push!(tape.live_vars[li_num],ri_idx)
@@ -241,7 +241,7 @@ function forward_pass3_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
         # println("++++++++++++++++++++++++++++++++++++")
     end
     # @show tape.imm2ord,immlen
-    # assert(tape.imm2ord>=immlen)
+    # @assert tape.imm2ord>=immlen
     tape.imm2ordlen = immlen
     # @show stklen
     resize!(tape.imm,max(tape.imm1ordlen,tape.imm2ordlen)) #if not resize memory will be hold in julia , and not claimed by gc
@@ -254,14 +254,14 @@ end
 end
 
 function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
-    assert(tape.nzh != -one(I))
+    @assert tape.nzh != -one(I)
     tr = tape.tr
     tt = tape.tt
     idx = length(tt)
     trlen = length(tr)
     imm = tape.imm
     immlen = tape.imm2ordlen
-    # assert(length(imm) == immlen)  
+    # @assert length(imm) == immlen
 
     adjs = tape.stk
     adjlen = 1
@@ -592,7 +592,7 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
         end #end TYPE_O
         # println("++++++++++++++++++++++++++++++++++++")
     end  #end while
-    # assert(immlen == 0 && trlen == 0)
+    # @assert immlen == 0 && trlen == 0
     # @show tape.eset
 
     # @show vidx

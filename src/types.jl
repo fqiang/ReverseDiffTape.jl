@@ -73,6 +73,29 @@ type mPair{I,V}
     end
 end
 
+type EP4{I,V}
+    s::Set{I}
+    v::SparseMatrixCSC{V,I}
+    function EP4()
+        return new(Set{I}(),sparsevec([1],[0.0]))
+    end
+    function EP4(ep4::EP4)
+        set = ep4.s
+        idxes = Vector{I}(length(set))
+        vals = Vector{V}(length(set))
+        i::I = 1
+        for idx in set
+            idxes[i] = idx
+            vals[i] = zero(V)
+            i += 1
+        end
+        if(!isempty(idxes))
+            ep4.v = sparsevec(idxes, vals)
+        end
+        return ep4
+    end
+end
+
 type Tape{I,V}
     tt::Vector{I}
     stk::Vector{V}
@@ -85,11 +108,19 @@ type Tape{I,V}
     h_J::Vector{I}
     hess::Vector{V}
     nzh::I
+
+    #use by ep2
     node_idx_to_number::SparseMatrixCSC{I,I}
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
 
+    #used by ep3
     bh3::Vector{Dict{I,V}} 
+
+    #used by ep4
+    bh4::Vector{EP4{I,V}}
+
+    h_type::I
 
     imm::Vector{V}
     imm1ordlen::I
@@ -128,6 +159,10 @@ type Tape{I,V}
 
             Vector{Dict{I,V}}(), #bh3
 
+            Vector{EP4{I,V}}(), #bh4
+
+            zero(I), #h_type
+
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
             zero(I),     #2nd order length
@@ -162,6 +197,10 @@ type Tape{I,V}
             Vector{I}(),    #current horizontal indicies
 
             Vector{Dict{I,V}}(), #bh3
+
+            Vector{EP4{I,V}}(), #bh4
+
+            zero(I), #h_type
 
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -260,7 +299,13 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     # used by ep3
     tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
     for i=1:tape.nnode + tape.nvar
-        @inbounds tape.bh3[i] = Dict{Int,Float64}();
+        @inbounds tape.bh3[i] = Dict{I,V}();
+    end
+
+    #used by ep4
+    tape.bh4 = Vector{EP4{I,V}}(tape.nnode + tape.nvar);
+    for i = 1:tape.nnode + tape.nvar
+        @inbounds tape.bh4[i] = EP4{I,V}();
     end
 
     # init
@@ -443,8 +488,11 @@ function tapeBuilder{I}(data::Array{I,1})
 end
 
 ##########################################################################################
+function report_tape_mem(tape)
+    report_tape_mem(tape,tape.h_type)
+end
 
-function report_tape_mem{I,V}(tape::Tape{I,V})
+function report_tape_mem{I,V}(tape::Tape{I,V},ep::I)
     si = sizeof(I)
     sf = sizeof(V)
     i  = 0
@@ -469,16 +517,25 @@ function report_tape_mem{I,V}(tape::Tape{I,V})
     tb_now += length(tape.node_idx_to_number.nzval)  * sf
     tb_now += length(tape.node_idx_to_number.colptr)  * si
     tb_now += length(tape.node_idx_to_number.rowval) * si
-    tb + tb_now
-
-
-    tb_now = sizeof(tape.bh)
-    for j = 1:length(tape.bh)
-        tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
-        tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
-    end
-    @show "bh - bytes ", tb_now
     tb += tb_now
+
+    if ep==2
+        tb_now = sizeof(tape.bh)
+        for j = 1:length(tape.bh)
+            tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
+            tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
+        end
+        @show "bh - bytes ", tb_now
+        tb += tb_now
+    elseif ep==3
+        tb_now = sizeof(tape.bh3)
+        for d in tape.bh3
+            tb_now += sizeof(d)
+            tb_now += length(d) * (sizeof(I) + sizeof(V))
+        end
+        @show "bh - bytes ", tb_now
+        tb += tb_now    
+    end
 
     tb_now = length(tape.bh_idxes) * si
     @show "bh_idxes ", length(tape.bh_idxes), tb_now

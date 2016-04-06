@@ -1,8 +1,8 @@
 #testing ep2 and ep3
-h_str = [hess_structure2, hess_structure3];
-h_rev = [hess_reverse2, hess_reverse3];
+h_str = [hess_structure2, hess_structure3,hess_structure4];
+h_rev = [hess_reverse2, hess_reverse3,hess_reverse4];
 
-for i=1:2
+for i=1:length(h_str)
 
 facts("Hessian EP$i algorithm x1^2*x2^2") do
     p = Vector{Float64}()
