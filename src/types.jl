@@ -73,6 +73,29 @@ type mPair{I,V}
     end
 end
 
+type EP4{I,V}
+    s::Set{I}
+    v::SparseMatrixCSC{V,I}
+    function EP4()
+        return new(Set{I}(),sparsevec([1],[0.0]))
+    end
+    function EP4(ep4::EP4)
+        set = ep4.s
+        idxes = Vector{I}(length(set))
+        vals = Vector{V}(length(set))
+        i::I = 1
+        for idx in set
+            idxes[i] = idx
+            vals[i] = zero(V)
+            i += 1
+        end
+        if(!isempty(idxes))
+            ep4.v = sparsevec(idxes, vals)
+        end
+        return ep4
+    end
+end
+
 type Tape{I,V}
     tt::Vector{I}
     stk::Vector{V}
@@ -85,9 +108,19 @@ type Tape{I,V}
     h_J::Vector{I}
     hess::Vector{V}
     nzh::I
+
+    #use by ep2
     node_idx_to_number::SparseMatrixCSC{I,I}
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
+
+    #used by ep3
+    bh3::Vector{Dict{I,V}} 
+
+    #used by ep4
+    bh4::Vector{EP4{I,V}}
+
+    h_type::I
 
     imm::Vector{V}
     imm1ordlen::I
@@ -99,6 +132,7 @@ type Tape{I,V}
     eset::Dict{I,Dict{I,V}}
     liveVar::Dict{I,Set{I}}
     h::Dict{I,Dict{I,V}}
+
 
     nvar::I
     nvnode::I
@@ -122,6 +156,12 @@ type Tape{I,V}
             sparsevec([1],[-1]),  #node_idx_to_number
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
+
+            Vector{Dict{I,V}}(), #bh3
+
+            Vector{EP4{I,V}}(), #bh4
+
+            zero(I), #h_type
 
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -156,6 +196,12 @@ type Tape{I,V}
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
 
+            Vector{Dict{I,V}}(), #bh3
+
+            Vector{EP4{I,V}}(), #bh4
+
+            zero(I), #h_type
+
             Vector{V}(), #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
             zero(I),     #2nd order length
@@ -180,8 +226,9 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     idx = one(I)
     istk = Vector{I}()
     v_idx_max = zero(I)
-    immlen_max = zero(I)  # for sure >= 2ord 1ord
-    
+    immlen_2nd = zero(I)  # for sure >= 2ord 1ord
+   	immlen_1st = zero(I)
+ 
     node_idxes = Vector{I}()
     node_numbers = Vector{I}()
     @inbounds while(idx <= length(tt))
@@ -199,10 +246,23 @@ function analysize_tape{I,V}(tape::Tape{I,V})
             push!(istk,idx-3)
             node_idx = idx - 3
         elseif(ntype == TYPE_O)
+			@inbounds op_sym = OP[tt[idx]]
             idx += 1  #skip oc
             @inbounds n = tt[idx]
             idx += 2  #skip TYPE_O
-            immlen_max += n + round(I,(n+1)*n/2)  #max estimation
+			if n==1
+				immlen_2nd += 2 
+			else
+				if op_sym==:*
+            		immlen_2nd += div(n*(n+1),2)  #max estimation
+				elseif op_sym == :+ || op_sym ==:-	
+					immlen_2nd += 0
+				else
+					immlen_2nd += 5
+				end
+			end
+			immlen_1st += n			
+
             tape.maxoperands = max(n,tape.maxoperands)
             
             tape.fstkmax = max(tape.fstkmax,length(istk))
@@ -229,14 +289,28 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     # @show node_idxes,node_numbers
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
+    # used by ep2
     tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar);
     tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
     for i=1:tape.nnode+tape.nvar 
         @inbounds tape.bh[i] = Vector{mPair{Int,Float64}}();
     end
 
+    # used by ep3
+    tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
+    for i=1:tape.nnode + tape.nvar
+        @inbounds tape.bh3[i] = Dict{I,V}();
+    end
+
+    #used by ep4
+    tape.bh4 = Vector{EP4{I,V}}(tape.nnode + tape.nvar);
+    for i = 1:tape.nnode + tape.nvar
+        @inbounds tape.bh4[i] = EP4{I,V}();
+    end
+
     # init
-    resize!(tape.imm, immlen_max)
+	@show max(immlen_1st,immlen_2nd)
+    resize!(tape.imm, max(immlen_1st,immlen_2nd))
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
@@ -329,6 +403,7 @@ end
 
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
     # @show expr
+    assert(length(tape.tt)==0)
     istk = Vector{I}()
     tapeBuilder(expr,tape, pvals, istk)
     analysize_tape(tape)
@@ -384,7 +459,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
             end
         end
     else
-        println("error !")
+        @show "error !"
         dump(expr)
         assert(false)
     end
@@ -413,4 +488,78 @@ function tapeBuilder{I}(data::Array{I,1})
 end
 
 ##########################################################################################
+function report_tape_mem(tape)
+    report_tape_mem(tape,tape.h_type)
+end
 
+function report_tape_mem{I,V}(tape::Tape{I,V},ep::I)
+    si = sizeof(I)
+    sf = sizeof(V)
+    i  = 0
+    tb = 0
+
+    tb_now = length(tape.tt) * si
+    @show "tape ", length(tape.tt), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.stk) *si
+    @show "stk ", length(tape.stk), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.g_I) * si + length(tape.g)*sf + 1*si
+    tb += tb_now
+    
+    tb_now = length(tape.h_I) * si + length(tape.h_J) * si + length(tape.hess)*sf+ 1*si
+    tb += tb_now
+    @show " hessian nnz", length(tape.h_I)
+
+    tb_now = sizeof(tape.node_idx_to_number)
+    tb_now += length(tape.node_idx_to_number.nzval)  * sf
+    tb_now += length(tape.node_idx_to_number.colptr)  * si
+    tb_now += length(tape.node_idx_to_number.rowval) * si
+    tb += tb_now
+
+    if ep==2
+        tb_now = sizeof(tape.bh)
+        for j = 1:length(tape.bh)
+            tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
+            tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
+        end
+        @show "bh - bytes ", tb_now
+        tb += tb_now
+    elseif ep==3
+        tb_now = sizeof(tape.bh3)
+        for d in tape.bh3
+            tb_now += sizeof(d)
+            tb_now += length(d) * (sizeof(I) + sizeof(V))
+        end
+        @show "bh - bytes ", tb_now
+        tb += tb_now    
+    end
+
+    tb_now = length(tape.bh_idxes) * si
+    @show "bh_idxes ", length(tape.bh_idxes), tb_now
+    tb += tb_now
+
+    tb_now = length(tape.imm) * sf
+    @show "imm ", length(tape.imm), tb_now,  "needed length " , tape.imm2ordlen
+    tb += tb_now
+
+    tb += 2*si #imm1ordlen , imm2ordlen
+
+    tb_now = length(tape.tr) * si
+    @show "tr ",length(tape.tr), tb_now
+    tb += tb_now
+    tb += 1*si  #trlen
+
+    tb += 5* si #nvar, nvnode, nnode, maxoperands, fstkmax
+
+    @show " tape = ", tb ," bytes"
+
+    tb_ep1 = sizeof(tape.eset)
+    tb_ep1 += sizeof(tape.liveVar)
+    tb_ep1 += sizeof(tape.h)
+    @show " with ep1 data ", tb_ep1, " bytes "
+
+    return tb+tb_ep1
+end
