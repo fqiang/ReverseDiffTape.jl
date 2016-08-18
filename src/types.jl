@@ -111,17 +111,19 @@ type Tape{I,V}
 
     #use by ep2
     node_idx_to_number::SparseMatrixCSC{I,I}
-    bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
+    # bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
+    bhi::Vector{Vector{I}}
+    bhv::Vector{Vector{V}}
     bh_idxes::Vector{I}   #current horizontal indicies
     # bh_length::Vector{I}  
 
     #used by ep3
-    bh3::Vector{Dict{I,V}} 
+    # bh3::Vector{Dict{I,V}} 
 
-    #used by ep4
-    bh4::Vector{EP4{I,V}}
+    # #used by ep4
+    # bh4::Vector{EP4{I,V}}
 
-    h_type::I
+    # h_type::I
 
     imm::Vector{V}
     imm1ordlen::I
@@ -130,9 +132,9 @@ type Tape{I,V}
     tr::Vector{I}
     trlen::I
 
-    eset::Dict{I,Dict{I,V}}
-    liveVar::Dict{I,Set{I}}
-    h::Dict{I,Dict{I,V}}
+    # eset::Dict{I,Dict{I,V}}
+    # liveVar::Dict{I,Set{I}}
+    # h::Dict{I,Dict{I,V}}
 
 
     nvar::I
@@ -141,9 +143,9 @@ type Tape{I,V}
     maxoperands::I
     fstkmax::I
 
-    t_push_edge::V
+    # t_push_edge::V
     
-    function Tape()
+    function Tape(;imm = Vector{V}())
         return new(
             Vector{I}(),  #tt
             Vector{V}(),  #stack - used for adjoints in reverse sweep
@@ -159,17 +161,19 @@ type Tape{I,V}
             sparsevec([1],[-1]),  #node_idx_to_number
 
 
-            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
+            # Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
+            Vector{Vector{I}}(),
+            Vector{Vector{V}}(),
             Vector{I}(),    #current horizontal indicies
             # Vector{I}(),    #horizontal lengths
 
-            Vector{Dict{I,V}}(), #bh3
+            # Vector{Dict{I,V}}(), #bh3
 
-            Vector{EP4{I,V}}(), #bh4
+            # Vector{EP4{I,V}}(), #bh4
 
-            zero(I), #h_type
+            # zero(I), #h_type
 
-            Vector{V}(), #imm , using for both 1st and 2nd order
+            imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
             zero(I),     #2nd order length
             
@@ -177,12 +181,12 @@ type Tape{I,V}
             zero(I),     #trlen
 
 
-            Dict{I,Dict{I,V}}(),  #eset
-            Dict{I,Set{I}}(),     #liveVar
-            Dict{I,Dict{I,V}}(),  #h
+            # Dict{I,Dict{I,V}}(),  #eset
+            # Dict{I,Set{I}}(),     #liveVar
+            # Dict{I,Dict{I,V}}(),  #h
 
             zero(I),zero(I),zero(I),zero(I),zero(I)
-            ,zero(V)
+            # ,zero(V)
             )
     end
 
@@ -297,13 +301,14 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
     # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
+    # tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
+    resize!(tape.bhi, tape.nnode+tape.nvar)
+    resize!(tape.bhv, tape.nnode+tape.nvar)
     # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
     for i=1:tape.nnode+tape.nvar 
-        tape.bh[i] = Vector{mPair{Int,Float64}}()
-        # for j=1:tape.bh_length[i]
-        #     push!(tape.bh[i],mPair{Int,Float64}())
-        # end
+        # tape.bhi[i] = Vector{mPair{Int,Float64}}()
+        tape.bhi[i] = Vector{Int}()
+        tape.bhv[i] = Vector{Float64}()
     end
     # fill!(tape.bh_length,0)
     # tape.bh_length = zeros(Int,tape.nnode+tape.nvar)
@@ -314,16 +319,16 @@ function analysize_tape{I,V}(tape::Tape{I,V})
 
 
     # used by ep3
-    tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
-    for i=1:tape.nnode + tape.nvar
-        @inbounds tape.bh3[i] = Dict{I,V}();
-    end
+    # tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
+    # for i=1:tape.nnode + tape.nvar
+    #     @inbounds tape.bh3[i] = Dict{I,V}();
+    # end
 
-    #used by ep4
-    tape.bh4 = Vector{EP4{I,V}}(tape.nnode + tape.nvar);
-    for i = 1:tape.nnode + tape.nvar
-        @inbounds tape.bh4[i] = EP4{I,V}();
-    end
+    # #used by ep4
+    # tape.bh4 = Vector{EP4{I,V}}(tape.nnode + tape.nvar);
+    # for i = 1:tape.nnode + tape.nvar
+    #     @inbounds tape.bh4[i] = EP4{I,V}();
+    # end
 
     # init
 	# @show max(immlen_1st,immlen_2nd)
