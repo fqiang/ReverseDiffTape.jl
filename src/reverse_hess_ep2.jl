@@ -19,8 +19,13 @@ end
 
 @inline function push_edge2(tape,to,from)
     # @show "push_edge2 - ",to," <--- ", from
-    @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0))    
-    # @show tape.bh
+    
+    @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0)) 
+    
+    # @inbounds tape.bh_length[to] += 1
+    # @inbounds idx = tape.bh_length[to]
+    # @inbounds tape.bh[to][idx].i = from
+    # @inbounds tape.bh[to][idx].w = 0.0
 end
 
 function hess_struct2{I,V}(tape::Tape{I,V})
@@ -193,6 +198,10 @@ function hess_struct2{I,V}(tape::Tape{I,V})
     end
     tape.nzh = length(tape.h_I)
     resize!(tape.hess, tape.nzh)
+
+
+    # @show tape.t_push_edge
+    # writedlm(open("log4000_1_bh_length.txt","w"),tape.bh_length)
     return tape.nzh
 end
 
@@ -616,6 +625,7 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
     # @show tape.eset
 
     # @show vidx
+    # tic()
     nz = one(I)
     for i = 1:tape.nvar
         @inbounds lvi = tape.bh[i]
@@ -630,6 +640,8 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             end
         end
     end
+    # t_recover = toq()
+    # @show t_recover
     return tape.nzh
 end
 
@@ -637,7 +649,9 @@ end
 
 #Interface function
 function hess_structure2{I,V}(tape::Tape{I,V})
-    return hess_struct2(tape)
+    # @time hess_struct2(tape,0)
+    nz = hess_struct2(tape)
+    return nz
 end
 
 function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})

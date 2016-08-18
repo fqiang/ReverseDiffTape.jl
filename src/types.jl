@@ -113,6 +113,7 @@ type Tape{I,V}
     node_idx_to_number::SparseMatrixCSC{I,I}
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
+    # bh_length::Vector{I}  
 
     #used by ep3
     bh3::Vector{Dict{I,V}} 
@@ -139,6 +140,8 @@ type Tape{I,V}
     nnode::I
     maxoperands::I
     fstkmax::I
+
+    t_push_edge::V
     
     function Tape()
         return new(
@@ -154,8 +157,11 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
             sparsevec([1],[-1]),  #node_idx_to_number
+
+
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
+            # Vector{I}(),    #horizontal lengths
 
             Vector{Dict{I,V}}(), #bh3
 
@@ -176,6 +182,7 @@ type Tape{I,V}
             Dict{I,Dict{I,V}}(),  #h
 
             zero(I),zero(I),zero(I),zero(I),zero(I)
+            ,zero(V)
             )
     end
 
@@ -290,11 +297,21 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
     # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar);
-    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
+    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
+    # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
     for i=1:tape.nnode+tape.nvar 
-        @inbounds tape.bh[i] = Vector{mPair{Int,Float64}}();
+        tape.bh[i] = Vector{mPair{Int,Float64}}()
+        # for j=1:tape.bh_length[i]
+        #     push!(tape.bh[i],mPair{Int,Float64}())
+        # end
     end
+    # fill!(tape.bh_length,0)
+    # tape.bh_length = zeros(Int,tape.nnode+tape.nvar)
+
+
+    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
+    
+
 
     # used by ep3
     tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
@@ -309,7 +326,7 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     end
 
     # init
-	@show max(immlen_1st,immlen_2nd)
+	# @show max(immlen_1st,immlen_2nd)
     resize!(tape.imm, max(immlen_1st,immlen_2nd))
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
@@ -428,9 +445,23 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
         op = expr.args[1]
         n = length(expr.args)-1
         assert(typeof(op)==Symbol)
-        if(op==:+ && n<2) 
+        if(op==:+ && n==1) 
             #simpliy the expression eliminate 1-ary + node
             tapeBuilder(expr.args[2],tape,pvals,istk)
+        elseif (op == :+ && n==0)
+            #adding 0.0 to tape
+            tapeBuilder(0.0,tape,pvals,istk)
+        elseif (op == :- && n==1)
+            tapeBuilder(expr.args[2],tape,pvals,istk)
+
+            push!(tt,TYPE_O)
+            push!(tt,S_TO_OC[op])
+            push!(tt,n)
+            push!(tt,TYPE_O)
+            
+            tape.fstkmax = max(tape.fstkmax,length(istk))
+            cidx = pop!(istk)
+            push!(istk,length(tt)-3)
         else
             for i in 2:length(expr.args)
                 tapeBuilder(expr.args[i],tape,pvals,istk)
@@ -453,10 +484,6 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
             # tape.imm2ordlen += n + round(I,n*(n+1)/2)
             # tape.eset[length(tt)-3] = Dict{I,V}()
             # @show length(tt) - 3
-            if (op==:+ || op ==:-) && n<2
-                @show expr
-                assert(false)
-            end
         end
     else
         @show "error !"
