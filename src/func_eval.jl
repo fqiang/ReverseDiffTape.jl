@@ -13,18 +13,21 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
         idx += 1
         # @show ntype
         if(ntype == TYPE_P)
+            idx += 1 #skip ID
             @inbounds val = pvals[tt[idx]]
             idx += 1
             stklen += 1
             @inbounds stk[stklen] = val
             idx += 1 #skip TYPE_P
         elseif(ntype == TYPE_V)
+            idx += 1 #skip ID
             @inbounds val = vvals[tt[idx]]
             idx += 1
             stklen += 1
             @inbounds stk[stklen] = val
             idx += 1 #skip TYPE_V
         elseif(ntype == TYPE_O)
+            idx += 1 #skip ID
             @inbounds oc = tt[idx]
             idx += 1
             @inbounds n = tt[idx]
@@ -38,6 +41,8 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
                 stklen -= n-1
                 @inbounds stk[stklen] = val
             end
+        # else 
+        #     @assert false
         end
     end
     return stk[1]

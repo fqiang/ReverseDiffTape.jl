@@ -175,8 +175,4 @@ include("runtest_ep3.jl")
 # include("runtest_ep2.jl")
 
 
-### Version 1 - implementation 
-include("runtest_ep.jl")
-
-
 FactCheck.exitstatus()

@@ -9,59 +9,6 @@ const TYPE_V = 1    #variable node
 const TYPE_P = 2    #param node
 const TYPE_O = 3
 
-##############################################################################
-# 
-# MyArray type encapsulate a julia array 1-dim
-#
-##############################################################################
-# importall Base
-
-# type MyArray{V}
-#     a::Array{V,1}
-#     len::Int
-#     maxlen::Int
-# end
-
-# call{V}(::Type{MyArray{V}},max_sz::Int) = MyArray{V}(Array{V,1}(max_sz),0,max_sz)
-
-# @inline function push!{V}(a::MyArray{V},v::V)
-#     # println("push!, a, v")
-#     # @show v
-#     # @show a
-#     # assert(a.len+1<=a.maxlen)
-#     a.len += 1
-#     @inbounds a.a[a.len] = v
-#     # @show a
-# end
-
-# @inline function resize!{V}(a::MyArray{V},sz::Int)
-#     assert(sz<=a.maxlen)
-#     a.len = sz
-# end
-
-# @inline function length(a::MyArray)
-#     return a.len
-# end
-
-# @inline function getindex{V}(a::MyArray{V},i::Int)
-#     # assert(i<=a.maxlen)
-#     @inbounds return a.a[i]
-# end
-
-# @inline function setindex!{V}(a::MyArray{V},v::V,i::Int)
-#     # assert(i<=a.maxlen)
-#     @inbounds a.a[i] = v
-# end
-
-# endof(a::MyArray) = length(a)
-
-
-# function Base.show(io::IO,m::MyArray)
-#     println(io,m.a[1:m.len],",",m.len,",",m.maxlen)
-# end
-
-##############################################################################
-
 type mPair{I,V}
     i::I
     w::V
@@ -70,29 +17,6 @@ type mPair{I,V}
     end
     function mPair(idx,ww)
         return new(idx,ww)
-    end
-end
-
-type EP4{I,V}
-    s::Set{I}
-    v::SparseMatrixCSC{V,I}
-    function EP4()
-        return new(Set{I}(),sparsevec([1],[0.0]))
-    end
-    function EP4(ep4::EP4)
-        set = ep4.s
-        idxes = Vector{I}(length(set))
-        vals = Vector{V}(length(set))
-        i::I = 1
-        for idx in set
-            idxes[i] = idx
-            vals[i] = zero(V)
-            i += 1
-        end
-        if(!isempty(idxes))
-            ep4.v = sparsevec(idxes, vals)
-        end
-        return ep4
     end
 end
 
@@ -110,42 +34,25 @@ type Tape{I,V}
     nzh::I
 
     #use by ep2
-    node_idx_to_number::SparseMatrixCSC{I,I}
     bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
     bh_idxes::Vector{I}   #current horizontal indicies
-    # bh_length::Vector{I}  
-
-    #used by ep3
-    bh3::Vector{Dict{I,V}} 
-
-    #used by ep4
-    bh4::Vector{EP4{I,V}}
-
-    h_type::I
-
+    
     imm::Vector{V}
     imm1ordlen::I
     imm2ordlen::I
 
     tr::Vector{I}
-    trlen::I
-
-    eset::Dict{I,Dict{I,V}}
-    liveVar::Dict{I,Set{I}}
-    h::Dict{I,Dict{I,V}}
-
+    # trlen::I
 
     nvar::I
     nvnode::I
     nnode::I
     maxoperands::I
     fstkmax::I
-
-    t_push_edge::V
-    
-    function Tape()
+ 
+    function Tape(;imm=Vector{V}(), tt=Vector{I}())
         return new(
-            Vector{I}(),  #tt
+            tt,  #tt
             Vector{V}(),  #stack - used for adjoints in reverse sweep
             
             Vector{I}(),  #grad_I
@@ -156,75 +63,20 @@ type Tape{I,V}
             Vector{I}(),  #hess_J
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
-            sparsevec([1],[-1]),  #node_idx_to_number
-
 
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
             # Vector{I}(),    #horizontal lengths
 
-            Vector{Dict{I,V}}(), #bh3
-
-            Vector{EP4{I,V}}(), #bh4
-
-            zero(I), #h_type
-
-            Vector{V}(), #imm , using for both 1st and 2nd order
+            imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
             zero(I),     #2nd order length
             
             Vector{I}(), #reverse order level trace, tr vector
-            zero(I),     #trlen
-
-
-            Dict{I,Dict{I,V}}(),  #eset
-            Dict{I,Set{I}}(),     #liveVar
-            Dict{I,Dict{I,V}}(),  #h
-
-            zero(I),zero(I),zero(I),zero(I),zero(I)
-            ,zero(V)
-            )
-    end
-
-    function Tape(data::Vector{I})
-        this = new(
-            data,         #tt
-            Vector{V}(),  #stack
-            
-            Vector{I}(),  #grad_I
-            Vector{V}(),  #grad value
-            -one(I),      #grad indicator
-            
-            Vector{I}(),  #hess_I
-            Vector{I}(),  #hess_J
-            Vector{V}(),  #hess value
-            -one(I),      #hess indicator
-            sparsevec([1],[-1]),  #node_idx_to_number
-            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
-            Vector{I}(),    #current horizontal indicies
-
-            Vector{Dict{I,V}}(), #bh3
-
-            Vector{EP4{I,V}}(), #bh4
-
-            zero(I), #h_type
-
-            Vector{V}(), #imm , using for both 1st and 2nd order
-            zero(I),     #1st order length
-            zero(I),     #2nd order length
-            
-            Vector{I}(), #reverse order level trace, tr vector
-            zero(I),     #trlen
-
-
-            Dict{I,Dict{I,V}}(),  #eset
-            Dict{I,Set{I}}(),     #liveVar
-            Dict{I,Dict{I,V}}(),  #h
+            # zero(I),     #trlen
 
             zero(I),zero(I),zero(I),zero(I),zero(I)
             )
-        analysize_tape(this)
-        return this
     end
 end
 
@@ -235,25 +87,61 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     v_idx_max = zero(I)
     immlen_2nd = zero(I)  # for sure >= 2ord 1ord
    	immlen_1st = zero(I)
- 
-    node_idxes = Vector{I}()
-    node_numbers = Vector{I}()
+    
+    pnode_num = 0
+    tnode_num = 0
+    onode_num = 0
+    vnode_num = 0
+    @inbounds while idx <= length(tt)
+        @inbounds ntype = tt[idx]
+        idx += 1
+        if ntype == TYPE_P
+            pnode_num += 1
+            idx += 3
+        elseif ntype == TYPE_O
+            onode_num += 1
+            idx += 4
+        elseif ntype == TYPE_V
+            vnode_num += 1
+            idx += 1 #skip ID
+            v_idx_max = max(v_idx_max,tt[idx])
+            idx += 2
+        else
+            @assert false
+        end
+        tnode_num += 1
+    end
+    @assert idx == length(tt) + 1
+
+    # @show vnode_num, pnode_num, onode_num, tnode_num
+    @assert vnode_num + pnode_num + onode_num == tnode_num
+    tape.nvnode = vnode_num
+    tape.nvar = v_idx_max
+    tape.nnode = tnode_num
+
+    node_id = tape.nvar+1
+    idx = one(I)
     @inbounds while(idx <= length(tt))
         # @show idx
         @inbounds ntype = tt[idx]
         idx += 1
+        @assert tt[idx] == -1
+        tt[idx] = node_id 
+        node_id += 1
         if(ntype == TYPE_P)
-            idx += 2 #skip TYPE_P
-            push!(istk,idx-3)
-            node_idx = idx - 3
+            push!(istk, tt[idx])
+            idx += 3 #skip TYPE_P
+            # node_idx = idx - 4
+            # push!(istk,node_idx)
+            # @show "TYPE_P:", pnum, node_idx
         elseif(ntype == TYPE_V)
-            v_idx_max = max(v_idx_max,tt[idx])
-            idx += 2 #skip TYPE_V
-            tape.nvnode += 1
-            push!(istk,idx-3)
-            node_idx = idx - 3
+            push!(istk, tt[idx])
+            idx += 3 #skip TYPE_V
+            # node_idx = idx - 4
+            # push!(istk,node_idx)
         elseif(ntype == TYPE_O)
-			@inbounds op_sym = OP[tt[idx]]
+            idx += 1  #skip id
+            @inbounds op_sym = OP[tt[idx]]
             idx += 1  #skip oc
             @inbounds n = tt[idx]
             idx += 2  #skip TYPE_O
@@ -275,26 +163,15 @@ function analysize_tape{I,V}(tape::Tape{I,V})
             tape.fstkmax = max(tape.fstkmax,length(istk))
             t = Vector{I}() #slow but works
             for i = 1:n
-                cidx = pop!(istk)
-                push!(t,cidx)
+                cid = pop!(istk)
+                push!(t,cid)
             end
             append!(tape.tr, reverse!(t))
-            push!(istk,idx-4)
-            node_idx = idx - 4
+            push!(istk,tt[idx - 4])
+        else
+            @assert false
         end
-        tape.nnode += 1
-        push!(node_numbers, tape.nnode) #node id number start with 1
-        push!(node_idxes,node_idx)      #on tape index
     end
-    tape.nvar = v_idx_max
-    node_idxes = node_idxes + tape.nvar #shift nodes up to make room for independent nodes
-    node_numbers = node_numbers + tape.nvar #shift  up 
-    
-    # @show node_idxes,node_numbers
-    prepend!(node_numbers,collect(1:tape.nvar))    #top tape.nvar is the independent nodes
-    prepend!(node_idxes,collect(1:tape.nvar))
-    # @show node_idxes,node_numbers
-    tape.node_idx_to_number = sparsevec(node_idxes,node_numbers)  #independent nodes mapping
     
     # used by ep2
     tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
@@ -308,31 +185,15 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     # fill!(tape.bh_length,0)
     # tape.bh_length = zeros(Int,tape.nnode+tape.nvar)
 
-
-    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)
-    
-
-
-    # used by ep3
-    tape.bh3 = Vector{Dict{I,V}}(tape.nnode + tape.nvar);
-    for i=1:tape.nnode + tape.nvar
-        @inbounds tape.bh3[i] = Dict{I,V}();
-    end
-
-    #used by ep4
-    tape.bh4 = Vector{EP4{I,V}}(tape.nnode + tape.nvar);
-    for i = 1:tape.nnode + tape.nvar
-        @inbounds tape.bh4[i] = EP4{I,V}();
-    end
-
+    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)    
+   
     # init
 	# @show max(immlen_1st,immlen_2nd)
     resize!(tape.imm, max(immlen_1st,immlen_2nd))
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
-    tape.trlen = length(tape.tr)
-    # tape.nzg = -1
+    
     # verification
     assert(length(tape.tr) == tape.nnode-1)  #root node is not on tr
 end
@@ -347,6 +208,7 @@ function AD_V{V}(vvals::Array{V,1}, val) #provide variable value
     I = typeof(length(vvals))
     this = AD{I}(Array{I,1}())
     push!(this.data,TYPE_V)
+    push!(this.data,-1)
     push!(this.data,length(vvals))
     push!(this.data,TYPE_V)
     return this
@@ -354,6 +216,7 @@ end
 function AD_V{I}(idx::I) #without variable value
     this = AD{I}(Array{I,1}())
     push!(this.data,TYPE_V)
+    push!(this.data,-1)
     push!(this.data,idx)
     push!(this.data,TYPE_V)
     return this
@@ -363,6 +226,7 @@ function AD_P{V}(pvals::Array{V,1},val)
     I = typeof(length(pvals))
     this = AD{I}(Array{I,1}())
     push!(this.data,TYPE_P)
+    push!(this.data,-1)
     push!(this.data,length(pvals))
     push!(this.data,TYPE_P)
     return this
@@ -372,6 +236,7 @@ function AD_O{I}(s::Symbol,l::AD{I})
     this = AD{I}(Array{I,1}())
     append!(this.data,l.data)
     push!(this.data,TYPE_O)
+    push!(this.data,-1)
     push!(this.data,S_TO_OC[s])
     push!(this.data,1) #1 operand simply 
     push!(this.data,TYPE_O)
@@ -393,6 +258,7 @@ function AD_O{I,N}(s::Symbol,args::NTuple{N,AD{I}})
         append!(this.data,args[i].data)
     end
     push!(this.data,TYPE_O)
+    push!(this.data,-1)
     push!(this.data,S_TO_OC[s])
     push!(this.data,N) 
     push!(this.data,TYPE_O)
@@ -411,37 +277,42 @@ end
 #
 ##########################################################################################
 
-#building tape with Julia expression
-function tapeBuilder{I,V}(expr::Expr, pvals::Vector{V}, i::I=0)
-    tape = Tape{I,V}()
-    tapeBuilder(expr,tape,pvals)
-    return tape
-end
-
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
-    # @show expr
     assert(length(tape.tt)==0)
     istk = Vector{I}()
     tapeBuilder(expr,tape, pvals, istk)
+    @assert length(istk) == 1
     analysize_tape(tape)
+end
+
+function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I}) #a JuMP parameter
+    # @show "TYPE_P: ", expr, tape.nextid
+    tt = tape.tt
+    push!(tt,TYPE_P)
+    push!(tt,-1)
+    push!(tt,length(pvals)+1)
+    push!(tt,TYPE_P)
+
+    push!(istk,length(tt)-3)
+    push!(pvals,expr)
+    # tape.nnode += 1
 end
 
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I})
     tt = tape.tt
     head = expr.head
     if(head == :ref)  #a JuMP variable
+        # @show "TYPE_V", expr, tape.nextid
         assert(length(expr.args) == 2)
         vidx = expr.args[2]
         push!(tt,TYPE_V)
+        push!(tt,-1)
         push!(tt,vidx)
         push!(tt,TYPE_V)
-        
-        push!(istk,length(tt)-2)
-        # push!(vset,vidx)
-        # tape.nvnode += 1
-        # tape.nnode += 1
+        push!(istk,length(tt)-3)
     elseif(head == :call)
         # @show expr.args[2]
+        # @show "TYPE_O", expr, tape.nextid
         op = expr.args[1]
         n = length(expr.args)-1
         assert(typeof(op)==Symbol)
@@ -455,18 +326,21 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
             tapeBuilder(expr.args[2],tape,pvals,istk)
 
             push!(tt,TYPE_O)
+            push!(tt,-1)
             push!(tt,S_TO_OC[op])
             push!(tt,n)
             push!(tt,TYPE_O)
             
             tape.fstkmax = max(tape.fstkmax,length(istk))
             cidx = pop!(istk)
-            push!(istk,length(tt)-3)
+            push!(istk,length(tt)-4)
+            # @show length(tt)
         else
             for i in 2:length(expr.args)
                 tapeBuilder(expr.args[i],tape,pvals,istk)
             end
             push!(tt,TYPE_O)
+            push!(tt,-1)
             push!(tt,S_TO_OC[op])
             push!(tt,n)
             push!(tt,TYPE_O)
@@ -478,12 +352,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
                 # push!(t,cidx)
             end
             # append!(tape.tr,reverse!(t))
-            push!(istk,length(tt)-3)
-            # tape.nnode += 1
-            # tape.maxoperands = max(length(expr.args)-1, tape.maxoperands)
-            # tape.imm2ordlen += n + round(I,n*(n+1)/2)
-            # tape.eset[length(tt)-3] = Dict{I,V}()
-            # @show length(tt) - 3
+            push!(istk,length(tt)-4)
         end
     else
         @show "error !"
@@ -493,24 +362,14 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
     nothing
 end
 
-function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I}) #a JuMP parameter
-    tt = tape.tt
-    push!(tt,TYPE_P)
-    push!(tt,length(pvals)+1)
-    push!(tt,TYPE_P)
-
-    push!(istk,length(tt)-2)
-    push!(pvals,expr)
-    # tape.nnode += 1
-end
-
 ##########################################################################################
 #
 # tape builder from types
 #
 ##########################################################################################
 function tapeBuilder{I}(data::Array{I,1})
-    tape = Tape{I,Float64}(data)
+    tape = Tape{I,Float64}(tt=data)
+    analysize_tape(tape)
     return tape
 end
 

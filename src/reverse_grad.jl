@@ -16,22 +16,23 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
         @inbounds ntype = tt[idx]
         idx += 1
         if(ntype == TYPE_P)
-            # tic()
+            idx += 1 #skip ID
             @inbounds val = pvals[tt[idx]]
             idx += 2 #skip TYPE_P
             stklen += 1
             @inbounds stk[stklen] = val
         elseif(ntype == TYPE_V)
+            idx += 1 #skip ID
             @inbounds val = vvals[tt[idx]]
             idx += 2 #skip TYPE_V
             stklen += 1
             @inbounds stk[stklen] = val
         elseif(ntype == TYPE_O)
+            idx += 1 #skip ID
             @inbounds oc = tt[idx]
             idx += 1
             @inbounds n = tt[idx]
-            idx += 1
-            idx += 1 #skip TYPE_O
+            idx += 2 #skip TYPE_O
             # @show OP[oc], n, stklen-n+1, stklen
             # @show OP[oc], n, stk[stklen-n+1:stklen]
             if(n==1)
@@ -48,12 +49,15 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
             immlen += n
             # @show immlen
             # @show imm
+        # else 
+        #     @assert false
         end
         # @show stklen
         # @show stk
         # println("++++++++++++++++++++++++++++++++++++")
     end
     tape.imm1ordlen = immlen
+    # @show imm
     return @inbounds stk[1]
 end
 
@@ -70,27 +74,34 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
     @inbounds adjs[adjlen] = one(V) #initial value
 
     nnz = zero(I)
-    while(idx > 0)
-        @inbounds ntype = tt[idx]
+    @inbounds while(idx > 0)
+        ntype = tt[idx]
+        # @show ntype, adjlen
         idx -= 1
         @inbounds adj = adjs[adjlen]
         adjlen -= 1
+
         if(ntype == TYPE_P)
-            idx -= 2
+            idx -= 3 
         elseif(ntype == TYPE_V)
             # @show tt[idx],adj
             # adj=isnan(adj)?0.0:adj
             nnz += 1
             @inbounds tape.g[nnz]=adj
-            idx -= 2
+            # @show nnz, adj
+            idx -= 3
         elseif(ntype == TYPE_O)
             @inbounds n = tt[idx]
-            idx -= 3 #skip TYPE_O 
+            # @show n
+            idx -= 4 #skip TYPE_O 
             @simd for i=immlen-n+1:immlen
                 adjlen += 1
                 @inbounds adjs[adjlen] = imm[i]*adj
+                # @show adjlen, adjs[adjlen]
             end
             immlen -= n
+        # else 
+        #     @assert false
         end
     end
     nothing
@@ -107,11 +118,11 @@ function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing
         if(ntype == TYPE_V)
             nnz += 1
             tape.g_I[nnz] = tt[idx]
-            idx -= 2
-        elseif(ntype == TYPE_P)
-            idx -= 2
-        elseif(ntype == TYPE_O)
             idx -= 3
+        elseif(ntype == TYPE_P)
+            idx -= 3
+        elseif(ntype == TYPE_O)
+            idx -= 4
         end
     end
     tape.nzg = tape.nvnode
