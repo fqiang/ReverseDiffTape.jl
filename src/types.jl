@@ -9,16 +9,16 @@ const TYPE_V = 1    #variable node
 const TYPE_P = 2    #param node
 const TYPE_O = 3
 
-type mPair{I,V}
-    i::I
-    w::V
-    function mPair()
-        return new(zero(I),0.0)  #not valid entry
-    end
-    function mPair(idx,ww)
-        return new(idx,ww)
-    end
-end
+# type mPair{I,V}
+#     i::I
+#     w::V
+#     function mPair()
+#         return new(zero(I),0.0)  #not valid entry
+#     end
+#     function mPair(idx,ww)
+#         return new(idx,ww)
+#     end
+# end
 
 type Tape{I,V}
     tt::Vector{I}
@@ -33,10 +33,11 @@ type Tape{I,V}
     hess::Vector{V}
     nzh::I
 
-    #use by ep2
-    bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
-    bh_idxes::Vector{I}   #current horizontal indicies
-    
+    # #use by ep2
+    # bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
+    # bh_idxes::Vector{I}   #current horizontal indicies
+    bh::Vector{Dict{I,V}}
+
     imm::Vector{V}
     imm1ordlen::I
     imm2ordlen::I
@@ -64,9 +65,10 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
 
-            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
-            Vector{I}(),    #current horizontal indicies
+            # Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
+            # Vector{I}(),    #current horizontal indicies
             # Vector{I}(),    #horizontal lengths
+            Vector{Dict{I,V}}(),
 
             imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -174,18 +176,19 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     end
     
     # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
-    # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
-    for i=1:tape.nnode+tape.nvar 
-        tape.bh[i] = Vector{mPair{Int,Float64}}()
-        # for j=1:tape.bh_length[i]
-        #     push!(tape.bh[i],mPair{Int,Float64}())
-        # end
-    end
-    # fill!(tape.bh_length,0)
-    # tape.bh_length = zeros(Int,tape.nnode+tape.nvar)
+    # tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
+    # # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
+    # for i=1:tape.nnode+tape.nvar 
+    #     tape.bh[i] = Vector{mPair{Int,Float64}}()
+        
+    # end
+    # tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar) 
 
-    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)    
+    tape.bh = Vector{Dict{Int,Float64}}(tape.nnode+tape.nvar)
+    for i=1:length(tape.bh)
+        tape.bh[i] = Dict{Int,Float64}()
+    end
+
    
     # init
 	# @show max(immlen_1st,immlen_2nd)

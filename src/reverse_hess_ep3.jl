@@ -1,20 +1,19 @@
 #edge pusing algorithm for Hessian reverse AD
 
 function reset_hess3(tape)
-    @assert length(tape.bh3) == tape.nnode+tape.nvar
-    for i=1:tape.nnode+tape.nvar 
-        empty!(tape.bh3[i])
+    for i =1:length(tape.bh)
+        tape.bh[i] = Dict{Int,Float64}()
     end
-    
-    empty!(tape.h_I)  #hess_I
-    empty!(tape.h_J)  #hess_J
-    empty!(tape.hess) #hess value
+
+    tape.h_I = Vector{I}() #hess_I
+    tape.h_J = Vector{I}() #hess_J
+    tape.hess = Vector{Float64}() #hess value
     tape.nzh = -one(Int)     #hess indicator
 end
 
 function prepare_reeval_hess3(tape)
-    for i=1:tape.nnode+tape.nvar
-        d = tape.bh3[i]
+    for i = 1:length(tape.bh)
+        d = tape.bh[i]
         for k in keys(d)
             d[k] = 0.0
         end
@@ -23,12 +22,11 @@ end
 
 @inline function push_edge3(tape,to,from)
     # @show "push_edge3 - ",to," <--- ", from
-    @inbounds tape.bh3[to][from] = 0.0  
-    # @show tape.bh
+
+    @inbounds tape.bh[to][from]=0.0
 end
 
 function hess_struct3{I,V}(tape::Tape{I,V})
-    tape.h_type = 3
     if(tape.nzh != -1)
         return tape.nzh
     end
@@ -37,36 +35,27 @@ function hess_struct3{I,V}(tape::Tape{I,V})
     tr = tape.tr
     idx = length(tt)
     trlen = length(tr)
-    # @show tape.nnode-1, length(tr)
-    @assert tape.nnode-1 == length(tr)
+    assert(tape.nnode-1 == length(tr))
     
     while (idx > 0)
         @inbounds ntype = tt[idx]
         idx -= 1
         if(ntype == TYPE_P)
-            idx -= 2
+            idx -= 3
         elseif(ntype == TYPE_V)
             @inbounds v_idx = tt[idx]
             idx -= 1
-            i_idx = idx + tape.nvar
+            @inbounds i_id = tt[idx]
             idx -= 1
-
-            #pushing edges pointing to this v node to the independent variables below
-            # @show "pushing ", i_idx
-            @inbounds i_num = tape.node_idx_to_number[i_idx]
-            @assert i_num!=0 && v_idx <= tape.nvar
-            @inbounds d = tape.bh3[i_num]
-            for p_idx in keys(d)
-                # @inbounds (p_idx,w) = lvi[j]
-                @inbounds p_num = tape.node_idx_to_number[p_idx]
-                if p_idx == i_idx
+            # @assert i_id!=0 && v_idx <= tape.nvar && i_id > tape.nvar
+            idx -= 1
+            @inbounds lvi = tape.bh[i_id]
+            for p_id in keys(lvi)
+                # @inbounds p_id = lvi[j].i
+                if p_id == i_id
                     push_edge3(tape,v_idx,v_idx)
-                    # push!(tape.live_vars[v_idx],v_idx)  #v_num == v_idx  - by construction
-                    # push!(tape.bh[v_idx],(v_idx,0.0))
                 else
-                    push_edge3(tape,p_num,v_idx)
-                    # push!(tape.live_vars[p_num],v_idx)
-                    # push!(tape.bh[p_num],(v_idx,0.0))
+                    push_edge3(tape,p_id,v_idx)
                 end
             end
         elseif(ntype == TYPE_O)
@@ -76,101 +65,61 @@ function hess_struct3{I,V}(tape::Tape{I,V})
             idx -= 1
 
             #pushing
-            i_idx = idx  + tape.nvar #node i's idx on tape
-            # @show "pushing",i_idx
-            @inbounds i_num = tape.node_idx_to_number[i_idx]  #node i's number
-            @assert i_num!=0
+            @inbounds i_id = tt[idx]
             idx -= 1
-            @inbounds d = tape.bh3[i_num]
-            for p_idx in keys(d)
-                # @inbounds (p_idx,w) = lvi[j] #index of node p
-                @inbounds p_num = tape.node_idx_to_number[p_idx]
-                @assert p_num!=0
-                if(p_idx == i_idx)
+            # assert(i_id!=0 && i_id > tape.nvar)
+            idx -= 1
+            @inbounds lvi = tape.bh[i_id]
+            for p_id in keys(lvi)
+                # @inbounds p_id = lvi[j].i
+                # @show p_id
+                if(p_id == i_id)
                     for j0=trlen-n+1:trlen 
-                        @inbounds ci_idx = tr[j0] + tape.nvar
-                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        @assert ci_num!=0
-                        # push!(tape.live_vars[ci_num],ci_idx)
-                        push_edge3(tape,ci_num,ci_idx)
+                        @inbounds ci_id = tr[j0]
+                        push_edge3(tape,ci_id, ci_id)
                         for j1=j0+1:trlen
-                            @inbounds cii_idx = tr[j1] + tape.nvar
-                            @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                            @assert cii_num!=0
-                            @assert ci_idx < cii_idx
-                            # push!(tape.live_vars[cii_num],ci_idx)    # ci_idx -> cii_idx, will handle cii_idx first
-                            push_edge3(tape,cii_num,ci_idx)
+                            @inbounds cii_id = tr[j1]
+                            push_edge3(tape,cii_id, ci_id)
                         end
                     end
-                else  #when i_idx != p_idx
+                else  #when i_id != p_id
                     for j0 = trlen -n + 1:trlen
-                        @inbounds ci_idx = tr[j0] + tape.nvar
-                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        @assert p_idx <= ci_idx           
-                        # push!(tape.live_vars[ci_num],p_idx)    #p_idx -> ci_idx
-                        push_edge3(tape,ci_num,p_idx)
+                        @inbounds ci_id = tr[j0]
+                        push_edge3(tape,ci_id, p_id)
                     end
                 end
             end
-            # @show "after pushing", tape.live_vars
-
+           
             #creating 
-            # @show "creating ",i_idx
             @inbounds op_sym = OP[oc]
             # @show op_sym
             if (op_sym ==:+ || op_sym == :-)
                 #zeros
             elseif (n == 1 && op_sym != :-) #1-ary operator
-                @inbounds ci_idx = tr[trlen] + tape.nvar
-                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                @assert ci_num!=0
-                # push!(tape.live_vars[ci_num],ci_idx)
-                push_edge3(tape,ci_num,ci_idx)
+                @inbounds ci_id = tr[trlen]
+                push_edge3(tape,ci_id, ci_id)
             elseif (op_sym == :*)
                 # @show "times ", n
                 for j0 = trlen -n + 1:trlen
-                    @inbounds ci_idx = tr[j0] + tape.nvar
-                    @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                    @assert ci_num!=0
+                    @inbounds ci_id = tr[j0]
                     for j1=j0+1:trlen
-                        @inbounds cii_idx = tr[j1] + tape.nvar
-                        @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                        @assert cii_num!=0
-                        @assert ci_idx < cii_idx
-                        # push!(tape.live_vars[cii_num],ci_idx)
-                        push_edge3(tape,cii_num,ci_idx)
-                        # @show "push ",cii_num, cii_idx, "<--", ci_idx
+                        @inbounds cii_id = tr[j1]
+                        push_edge3(tape,cii_id, ci_id)
                     end
                 end 
             elseif (op_sym == :/) # binary operator /
-                # @assert false) #not tested , --- not implemented in operator
-                @assert n==2
-                @inbounds ri_idx = tr[trlen] + tape.nvar
-                @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                @assert ri_num!=0
-                @inbounds li_idx = tr[trlen-1] + tape.nvar
-                @inbounds li_num = tape.node_idx_to_number[li_idx]
-                @assert li_num!=0
-                @assert li_idx < ri_idx
-                # push!(tape.live_vars[ri_num],li_idx)
-                push_edge3(tape,ri_num,li_idx)
-                # push!(tape.live_vars[ri_num],ri_idx)
-                push_edge3(tape,ri_num,ri_idx)
+                assert(n==2)
+                @inbounds ri_id = tr[trlen]
+                @inbounds li_id = tr[trlen-1]
+                push_edge3(tape,ri_id,li_id)
+                push_edge3(tape,ri_id,ri_id)
             else # other binary
-                @assert n==2
-                @inbounds ri_idx = tr[trlen] + tape.nvar
-                @inbounds ri_num = tape.node_idx_to_number[ri_idx]
-                @assert ri_num!=0
-                @inbounds li_idx = tr[trlen-1] + tape.nvar
-                @inbounds li_num = tape.node_idx_to_number[li_idx]
-                @assert li_num!=0
-                @assert li_idx < ri_idx
-                # push!(tape.live_vars[ri_num],ri_idx)
-                push_edge3(tape,li_num,li_idx)
-                # push!(tape.live_vars[li_num],ri_idx)
-                push_edge3(tape,ri_num,li_idx)   #li (from) --> ri (to)
-                # push!(tape.live_vars[li_num],li_idx)
-                push_edge3(tape,ri_num,ri_idx)
+                assert(n==2)
+                @inbounds ri_id = tr[trlen]
+                @inbounds li_id = tr[trlen-1]
+                push_edge3(tape,li_id, li_id)
+                push_edge3(tape,ri_id, li_id)
+                push_edge3(tape,ri_id, ri_id)
             end
             # @show "after creating", tape.live_vars
             trlen -= n
@@ -178,10 +127,10 @@ function hess_struct3{I,V}(tape::Tape{I,V})
     end #end while loop
 
     for i=1:tape.nvar
-        @inbounds d = tape.bh3[i] 
-        for v_idx in keys(d)
-            if(v_idx <=tape.nvar)
-                if(v_idx < i)
+        @inbounds lvi = tape.bh[i] 
+        for v_idx in keys(lvi)
+            if(v_idx <= tape.nvar)
+                if v_idx < i
                     push!(tape.h_I,i)
                     push!(tape.h_J,v_idx)
                 else
@@ -191,8 +140,12 @@ function hess_struct3{I,V}(tape::Tape{I,V})
             end
         end
     end
+
     tape.nzh = length(tape.h_I)
     resize!(tape.hess, tape.nzh)
+
+    # @show tape.t_push_edge
+    # writedlm(open("log4000_1_bh_length.txt","w"),tape.bh_length)
     return tape.nzh
 end
 
@@ -211,14 +164,17 @@ function forward_pass3_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
         # eset[idx] = Dict{I,V}() #initialize edge set
         idx += 1
         if(ntype == TYPE_P)
+            idx += 1 #skip ID
             stklen += 1
             @inbounds stk[stklen] = pvals[tt[idx]]
             idx += 2 #skip TYPE_P
         elseif(ntype == TYPE_V)
+            idx += 1 #skip ID
             stklen += 1
             @inbounds stk[stklen] = vvals[tt[idx]]
             idx += 2 #skip TYPE_V
         elseif(ntype == TYPE_O)
+            idx += 1 #skip ID
             @inbounds oc = tt[idx]
             idx += 1
             @inbounds n = tt[idx]
@@ -236,12 +192,14 @@ function forward_pass3_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
             immlen += counter
             # @show imm     
             # @show stk[stklen] 
+        # else 
+        #     @assert false
         end
         # @show stklen
         # println("++++++++++++++++++++++++++++++++++++")
     end
     # @show tape.imm2ord,immlen
-    # @assert tape.imm2ord>=immlen
+    # assert(tape.imm2ord>=immlen)
     tape.imm2ordlen = immlen
     # @show stklen
     resize!(tape.imm,max(tape.imm1ordlen,tape.imm2ordlen)) #if not resize memory will be hold in julia , and not claimed by gc
@@ -249,19 +207,23 @@ function forward_pass3_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
 end
 
 @inline function update3(tape,to,from,w)
-    # @show "update3 - ", to, "<-- ", from, tape.bh3[to][from], w, tape.bh3[to][from]+w
-    @inbounds tape.bh3[to][from] += w
+    # @show "update3 - ", to, "<-- ", from, w
+    # assert(tape.bh[to][tape.bh_idxes[to]].i == from)
+
+    # @inbounds tape.bh_idxes[to] += 1  
+    # @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
+    @inbounds tape.bh[to][from] += w
 end
 
 function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
-    @assert tape.nzh != -one(I)
+    assert(tape.nzh != -one(I))
     tr = tape.tr
     tt = tape.tt
     idx = length(tt)
     trlen = length(tr)
     imm = tape.imm
     immlen = tape.imm2ordlen
-    # @assert length(imm) == immlen
+    # assert(length(imm) == immlen)  
 
     adjs = tape.stk
     adjlen = 1
@@ -279,30 +241,27 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
         adjlen -= 1
         # @show adj
 
-
         if(ntype == TYPE_P)
-            idx -= 2
+            idx -= 3
         elseif(ntype == TYPE_V)
             @inbounds v_idx = tt[idx]
             idx -= 1
-            i_idx = idx + tape.nvar
+            # i_idx = idx + tape.nvar
+            @inbounds i_id = tt[idx]
             idx -= 1
-            # @show "pushing ",i_idx
-            @inbounds i_num = tape.node_idx_to_number[i_idx]
-            @inbounds d = tape.bh3[i_num]
-            for p_idx in keys(d)
-                # @inbounds (p_idx,w) = lvi[j]
-                w = d[p_idx]
-                @inbounds p_num = tape.node_idx_to_number[p_idx]
-                if p_idx == i_idx
+            idx -= 1 #skip TYPE_V
+            @inbounds lvi = tape.bh[i_id]
+            for p in lvi
+                p_id = p[1]
+                w = p[2]
+                if p_id == i_id
                     update3(tape,v_idx,v_idx,w)
-                elseif p_idx == v_idx  #p belong to i's child
+                elseif p_id == v_idx  #p belong to i's child
                     update3(tape,v_idx,v_idx,2.0*w)
                 else
-                    update3(tape,p_num,v_idx,w)
+                    update3(tape,p_id,v_idx,w)
                 end
             end
-            # @show idx, vidx
         elseif(ntype == TYPE_O)
             @inbounds n = tt[idx]
             idx -= 1
@@ -310,36 +269,32 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
             @inbounds op_sym = OP[oc]
             idx -= 1
 
-            # @show OP[oc],n
-            # @show tr
-
-            i_idx = idx + tape.nvar
+            @inbounds i_id = tt[idx]
             idx -= 1
-            @inbounds i_num = tape.node_idx_to_number[i_idx]
-            @inbounds d = tape.bh3[i_num]
-            @inbounds tr0_idx = tr[trlen] + tape.nvar
-            @inbounds tr0_num = tape.node_idx_to_number[tr0_idx]
-            
+            idx -= 1 #skip TYPE_O
+            @inbounds lvi = tape.bh[i_id]
+            @inbounds tr0_id = tr[trlen]
+
             imm_counter = zero(I)
 
             if n==1
                 #pushing
                 @inbounds t0 = imm[immlen-1]
-                for p_idx in keys(d)
-                    w = d[p_idx]
-                    # @inbounds p_num = tape.node_idx_to_number[p_idx]
-                    if p_idx == i_idx                       
+                for p in lvi
+                    p_id = p[1]
+                    w = p[2]
+                    if p_id == i_id                     
                         w_bar = t0*t0*w
-                        update3(tape,tr0_num,tr0_idx,w_bar)     
+                        update3(tape,tr0_id,tr0_id,w_bar)     
                     else
                         w_bar = t0*w
-                        update3(tape,tr0_num,p_idx,w_bar)
+                        update3(tape,tr0_id,p_id,w_bar)
                     end
                 end
                 #creating
                 if(op_sym != :-)
                     @inbounds w_bar = adj*imm[immlen]
-                    update3(tape,tr0_num,tr0_idx,w_bar)
+                    update3(tape,tr0_id,tr0_id,w_bar)
                 end
 
                 #updating 
@@ -347,34 +302,34 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 @inbounds adjs[adjlen] = t0*adj
                 imm_counter = 2
             elseif n == 2
-                @inbounds li_idx = tr[trlen-1] + tape.nvar
-                @inbounds li_num = tape.node_idx_to_number[li_idx]
+                @inbounds li_id = tr[trlen-1]
 
                 if op_sym == :/
                     #pushing
                     @inbounds dl = imm[immlen-4]
                     @inbounds dr = imm[immlen-3]
                     
-                    for p_idx in keys(d)
-                        w = d[p_idx]
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
                     
                         dlw = dl*w
                         drw = dr*w
-                        if p_idx == i_idx
-                            update3(tape,li_num,li_idx,dl*dlw)
-                            update3(tape,tr0_num,li_idx,dl*drw)
-                            update3(tape,tr0_num,tr0_idx,dr*drw)
+                        if p_id == i_id
+                            update3(tape,li_id,li_id,dl*dlw)
+                            update3(tape,tr0_id,li_id, dl*drw)
+                            update3(tape,tr0_id,tr0_id, dr*drw)
                         else 
-                            update3(tape,li_num,p_idx,dlw)
-                            update3(tape,tr0_num,p_idx,drw)
+                            update3(tape,li_id,p_id,dlw)
+                            update3(tape,tr0_id,p_id,drw)
                         end
                     end
                     #creating
                     @inbounds dll = imm[immlen-2]
                     @inbounds dlr = imm[immlen-1]
                     @inbounds drr = imm[immlen]
-                    update3(tape,tr0_num,li_idx,adj*dlr)
-                    update3(tape,tr0_num,tr0_idx,adj*drr)
+                    update3(tape,tr0_id,li_id,adj*dlr)
+                    update3(tape,tr0_id,tr0_id,adj*drr)
                     
                     #updating
                     imm_counter = 5
@@ -387,22 +342,23 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dl = imm[immlen-2]
                     @inbounds dr = imm[immlen-1]
                     
-                    for p_idx in keys(d)
-                        w = d[p_idx]
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
                     
                         dlw = dl*w
                         drw = dr*w
-                        if p_idx == i_idx
-                            update3(tape,li_num,li_idx,dl*dlw)
-                            update3(tape,tr0_num,li_idx,dl*drw)
-                            update3(tape,tr0_num,tr0_idx,dr*drw)
+                        if p_id == i_id
+                            update3(tape,li_id,li_id,dl*dlw)
+                            update3(tape,tr0_id,li_id,dl*drw)
+                            update3(tape,tr0_id, tr0_id,dr*drw)
                         else 
-                            update3(tape,li_num,p_idx,dlw)
-                            update3(tape,tr0_num,p_idx,drw)
+                            update3(tape,li_id,p_id,dlw)
+                            update3(tape,tr0_id,p_id,drw)
                         end
                     end
                     #creating
-                    update3(tape,tr0_num,li_idx,adj)  #adj*1.0
+                    update3(tape,tr0_id,li_id,adj)
                     
                     #updating
                     imm_counter = 3
@@ -412,15 +368,16 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds adjs[adjlen] = dr*adj
                 elseif  op_sym == :-
                     #pushing
-                    for p_idx in keys(d)
-                        w = d[p_idx]
-                        if p_idx == i_idx
-                            update3(tape,li_num,li_idx,w)
-                            update3(tape,tr0_num,li_idx,-1.0*w)
-                            update3(tape,tr0_num,tr0_idx,w)
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
+                        if p_id == i_id
+                            update3(tape,li_id,li_id,w)
+                            update3(tape,tr0_id,li_id,-1.0*w)
+                            update3(tape,tr0_id,tr0_id,w)
                         else
-                            update3(tape,li_num,p_idx,w)
-                            update3(tape,tr0_num,p_idx,-1.0*w)
+                            update3(tape,li_id,p_id,w)
+                            update3(tape,tr0_id,p_id,-1.0*w)
                         end
                     end
                     #creating
@@ -434,15 +391,16 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     imm_counter = 0
                 elseif op_sym == :+
                     #pushing
-                    for p_idx in keys(d)
-                        w = d[p_idx]
-                        if p_idx == i_idx
-                            update3(tape,li_num,li_idx,w)
-                            update3(tape,tr0_num,li_idx,w)
-                            update3(tape,tr0_num,tr0_idx,w)
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
+                        if p_id == i_id
+                            update3(tape,li_id,li_id,w)
+                            update3(tape,tr0_id,li_id,w)
+                            update3(tape,tr0_id,tr0_id,w)
                         else
-                            update3(tape,li_num,p_idx,w)
-                            update3(tape,tr0_num,p_idx,w)
+                            update3(tape,li_id,p_id,w)
+                            update3(tape,tr0_id,p_id,w)
                         end
                     end
                     #creating
@@ -460,28 +418,28 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dl = imm[immlen-4]
                     @inbounds dr = imm[immlen-3]
                     
-                    for p_idx in keys(d)
-                        w = d[p_idx]
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
                     
                         dlw = dl*w
                         drw = dr*w
-                        if p_idx == i_idx
-                            update3(tape,li_num,li_idx,dl*dlw)
-                            update3(tape,tr0_num,li_idx,dl*drw)
-                            update3(tape,tr0_num,tr0_idx,dr*drw)
+                        if p_id == i_id
+                            update3(tape,li_id,li_id,dl*dlw)
+                            update3(tape,tr0_id,li_id,dl*drw)
+                            update3(tape,tr0_id,tr0_id,dr*drw)
                         else 
-                            update3(tape,li_num,p_idx,dlw)
-                            update3(tape,tr0_num,p_idx,drw)
+                            update3(tape,li_id,p_id,dlw)
+                            update3(tape,tr0_id,p_id,drw)
                         end
                     end
                     #creating
                     @inbounds dll = imm[immlen-2]
                     @inbounds dlr = imm[immlen-1]
                     @inbounds drr = imm[immlen]
-                    #@show li_num, li_idx, adj, dll
-                    update3(tape,li_num,li_idx,adj*dll)
-                    update3(tape,tr0_num,li_idx,adj*dlr)
-                    update3(tape,tr0_num,tr0_idx,adj*drr)
+                    update3(tape,li_id,li_id,adj*dll)
+                    update3(tape,tr0_id,li_id,adj*dlr)
+                    update3(tape,tr0_id,tr0_id,adj*drr)
 
                     #updating
                     imm_counter = 5
@@ -493,26 +451,22 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
             else  #other + or * with n - operands
                 if op_sym == :+
                     #pushing
-                    for p_idx in keys(d)
-                        w = d[p_idx]
-                        # @inbounds p_num = tape.node_idx_to_number[p_idx]
-                        if p_idx == i_idx     
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
+                        if p_id == i_id  
                             for j0=trlen-n+1:trlen
-                                @inbounds ci_idx =tr[j0] + tape.nvar
-                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                                update3(tape,ci_num,ci_idx,w)
+                                @inbounds ci_id = tr[j0]
+                                update3(tape,ci_id,ci_id,w)
                                 for j1=j0+1:trlen
-                                    @inbounds cii_idx = tr[j1] + tape.nvar
-                                    @inbounds cii_num = tape.node_idx_to_number[cii_idx]
-                                    update3(tape,cii_num,ci_idx,w)
+                                    @inbounds cii_id = tr[j1]
+                                    update3(tape,cii_id,ci_id,w)
                                 end #j1 +=1
                             end #j0+=1
                         else #p_idx != i_idx
                             for k=trlen-n+1:trlen
-                                @inbounds ci_idx = tr[k] + tape.nvar
-                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                                # @show ci_idx , ci_num, p_idx, w
-                                update3(tape,ci_num,p_idx,w)
+                                @inbounds ci_id = tr[k]
+                                update3(tape,ci_id,p_id,w)
                             end
                         end
                     end
@@ -528,34 +482,32 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 elseif op_sym == :*
                     #pushing        
                     r = immlen - round(I,n+n*(n-1)/2)+1        
-                    for p_idx in keys(d)
-                        w = d[p_idx]
+                    for p in lvi
+                        p_id = p[1]
+                        w = p[2]
                         
                         k = r
-                        if p_idx == i_idx
+                        if p_id == i_id
                             for j0=trlen-n+1:trlen
-                                @inbounds ci_idx = tr[j0] + tape.nvar
-                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                @inbounds ci_id = tr[j0]
                                 @inbounds t0 = imm[k]
                                 t1 = t0*w
                                 @inbounds w_bar0 = t0 * t1
-                                update3(tape,ci_num,ci_idx,w_bar0)
+                                update3(tape,ci_id,ci_id,w_bar0)
                                 k0 = k + 1
                                 for j1=j0+1:trlen
-                                    @inbounds cii_idx = tr[j1] + tape.nvar
-                                    @inbounds cii_num = tape.node_idx_to_number[cii_idx]
+                                    @inbounds cii_id = tr[j1]
                                     @inbounds w_bar1 = t1*imm[k0]
-                                    update3(tape,cii_num,ci_idx,w_bar1)
+                                    update3(tape,cii_id,ci_id,w_bar1)
                                     k0 += 1
                                 end
                                 k += 1
                             end
                         else #p_idx != i_idx 
                             for j=trlen -n+1:trlen
-                                @inbounds ci_idx = tr[j] + tape.nvar
-                                @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                                @inbounds ci_id = tr[j]
                                 @inbounds w_bar = imm[k] * w
-                                update3(tape,ci_num,p_idx,w_bar)
+                                update3(tape,ci_id,p_id,w_bar)
                                 k += 1
                             end
                         end
@@ -563,13 +515,11 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     #creating
                     k = r + n
                     for j0=trlen-n+1:trlen
-                        @inbounds ci_idx = tr[j0]+tape.nvar
-                        @inbounds ci_num = tape.node_idx_to_number[ci_idx]
+                        @inbounds ci_id = tr[j0]
                         for j1=j0+1:trlen
-                            @inbounds cii_idx = tr[j1]+tape.nvar
-                            @inbounds cii_num = tape.node_idx_to_number[cii_idx]
+                            @inbounds cii_id = tr[j1]
                             @inbounds w = adj*imm[k]
-                            update3(tape,cii_num,ci_idx,w)
+                            update3(tape,cii_id,ci_id,w)
                             k+=1
                         end
                     end
@@ -589,25 +539,28 @@ function reverse_pass3_2ord{I,V}(tape::Tape{I,V}, factor::V)
             #update counters
             trlen -= n
             immlen -= imm_counter
+        # else
+        #     @assert false
         end #end TYPE_O
+
         # println("++++++++++++++++++++++++++++++++++++")
     end  #end while
-    # @assert immlen == 0 && trlen == 0
-    # @show tape.eset
-
-    # @show vidx
+    
+    # tic()
     nz = one(I)
     for i = 1:tape.nvar
-        @inbounds d = tape.bh3[i]
-        for v_idx in keys(d)
-            # @inbounds (v_idx,w) = lvi[j]
-            if(v_idx<=tape.nvar)
-                w = d[v_idx]
+        @inbounds lvi = tape.bh[i]
+        for p in lvi
+            v_idx = p[1]
+            w = p[2]
+            if(v_idx <= tape.nvar)
                 @inbounds tape.hess[nz] = w*factor
                 nz += 1
             end
         end
     end
+    # t_recover = toq()
+    # @show t_recover
     return tape.nzh
 end
 
@@ -615,7 +568,9 @@ end
 
 #Interface function
 function hess_structure3{I,V}(tape::Tape{I,V})
-    return hess_struct3(tape)
+    # @time hess_struct2(tape,0)
+    nz = hess_struct3(tape)
+    return nz
 end
 
 function hess_reverse3{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
@@ -625,6 +580,7 @@ end
 function hess_reverse3{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
     # @time forward_pass2_2ord(tape,vvals,pvals)
     # @time reverse_pass2_2ord(tape,factor)
+
     forward_pass3_2ord(tape,vvals,pvals)
     reverse_pass3_2ord(tape,factor)
 end

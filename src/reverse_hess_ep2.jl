@@ -80,10 +80,6 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                     end
                 else  #when i_id != p_id
                     for j0 = trlen -n + 1:trlen
-                        # @inbounds ci_idx = tr[j0] + tape.nvar
-                        # @inbounds ci_num = tape.node_idx_to_number[ci_idx]
-                        # assert(p_idx <= ci_idx)             
-                        # push_edge2(tape,ci_num,p_idx)
                         @inbounds ci_id = tr[j0]
                         push_edge2(tape,ci_id, p_id)
                     end
