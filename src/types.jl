@@ -41,10 +41,8 @@ type Tape{I,V}
     hess::Vector{V}
     nzh::I
 
-    #use by ep2
-    bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
-    bh_idxes::Vector{I}   #current horizontal indicies
-    
+    bh::Vector{Dict{I,V}}   # dict 
+
     imm::Vector{V}
     imm1ordlen::I
     imm2ordlen::I
@@ -80,8 +78,7 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
 
-            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
-            Vector{I}(),    #current horizontal indicies
+            Vector{Dict{I,V}}(),  #bh
             
             imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -230,13 +227,12 @@ function tape_analysize{I,V}(tape::Tape{I,V})
         end
     end
     
-    # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(bhlen)
-    # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
-    for i=1:bhlen
-        tape.bh[i] = Vector{mPair{Int,Float64}}()
+    # dict
+    tape.bh = Vector{Dict{Int,Float64}}(bhlen)
+    for i=1:length(tape.bh)
+        tape.bh[i] = Dict{Int,Float64}()
     end
-    tape.bh_idxes = zeros(Int,bhlen)    
+
 
     #timing vector for ep reverse
     @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, length(tape.bh))
