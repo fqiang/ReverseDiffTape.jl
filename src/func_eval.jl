@@ -20,7 +20,6 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
             @inbounds stk[stklen] = val
             idx += 1 #skip TYPE_P
         elseif(ntype == TYPE_V)
-            idx += 1 #skip ID
             @inbounds val = vvals[tt[idx]]
             idx += 1
             stklen += 1

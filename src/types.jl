@@ -1,4 +1,12 @@
 
+macro timing(cond,code)
+    return quote
+        if $(esc(cond))
+            $(esc(code))
+       end
+    end
+end
+
 #type alias
 typealias OP_TYPE Int
 typealias IDX_TYPE Int
@@ -42,16 +50,24 @@ type Tape{I,V}
     imm2ordlen::I
 
     tr::Vector{I}
-    # trlen::I
 
     nvar::I
     nvnode::I
     nnode::I
     maxoperands::I
     fstkmax::I
- 
-    function Tape(;imm=Vector{V}(), tt=Vector{I}())
-        return new(
+
+    # timing stat
+    enable_timing_stats::Bool
+    ep_reverse_times::Vector{V}
+    ep_forward_time::V
+    ep_recovery_time::V
+    ep_hess_structure::V
+    ep_n::I
+
+
+    function Tape(;imm=Vector{V}(), tt=Vector{I}(), with_timing=false)
+        tape = new(
             tt,  #tt
             Vector{V}(),  #stack - used for adjoints in reverse sweep
             
@@ -66,21 +82,62 @@ type Tape{I,V}
 
             Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
             Vector{I}(),    #current horizontal indicies
-            # Vector{I}(),    #horizontal lengths
-
+            
             imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
             zero(I),     #2nd order length
             
             Vector{I}(), #reverse order level trace, tr vector
-            # zero(I),     #trlen
-
+           
             zero(I),zero(I),zero(I),zero(I),zero(I)
+
+            ,with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
+        finalizer(tape, tape_cleanup)
+        return tape
     end
 end
 
-function analysize_tape{I,V}(tape::Tape{I,V})
+function tape_cleanup{I,V}(tape::Tape{I,V})
+    #output timing 
+    @timing tape.enable_timing_stats begin
+        f = open("ep_reverse_times.txt","w")
+        writedlm(f,tape.ep_reverse_times)
+        close(f)
+
+        f = open("ep_forward_time.txt","w")
+        writedlm(f, tape.ep_forward_time)
+        close(f)
+        f = open("ep_recovery_time.txt","w")
+        writedlm(f, tape.ep_recovery_time)
+        close(f)
+        f = open("ep_n.txt","w")
+        writedlm(f,tape.ep_n)
+        close(f)
+
+        f = open("ep_hess_structure.txt","w")
+        writedlm(f, tape.ep_hess_structure)
+        close(f)
+
+        f = open("tt.txt","w")
+        writedlm(f, tape.tt)
+        close(f)
+
+        f = open("tr.txt","w")
+        writedlm(f, tape.tr)
+        close(f)
+
+        v = Vector{I}(length(tape.bh))
+        for i =1:length(tape.bh)
+            v[i] = length(tape.bh[i])
+        end
+        f = open("ep_num_edges.txt","w")
+        writedlm(f, v)
+        close(f)
+    end
+end
+
+function tape_analysize{I,V}(tape::Tape{I,V})
     tt = tape.tt
     idx = one(I)
     istk = Vector{I}()
@@ -103,7 +160,6 @@ function analysize_tape{I,V}(tape::Tape{I,V})
             idx += 4
         elseif ntype == TYPE_V
             vnode_num += 1
-            idx += 1 #skip ID
             v_idx_max = max(v_idx_max,tt[idx])
             idx += 2
         else
@@ -112,34 +168,35 @@ function analysize_tape{I,V}(tape::Tape{I,V})
         tnode_num += 1
     end
     @assert idx == length(tt) + 1
-
     # @show vnode_num, pnode_num, onode_num, tnode_num
     @assert vnode_num + pnode_num + onode_num == tnode_num
     tape.nvnode = vnode_num
     tape.nvar = v_idx_max
     tape.nnode = tnode_num
+    bhlen = pnode_num + onode_num + v_idx_max
 
+    #updating ID
     node_id = tape.nvar+1
     idx = one(I)
     @inbounds while(idx <= length(tt))
         # @show idx
         @inbounds ntype = tt[idx]
         idx += 1
-        @assert tt[idx] == -1
-        tt[idx] = node_id 
-        node_id += 1
+        
         if(ntype == TYPE_P)
+            @assert tt[idx] == -1
+            tt[idx] = node_id 
+            node_id += 1
             push!(istk, tt[idx])
             idx += 3 #skip TYPE_P
-            # node_idx = idx - 4
-            # push!(istk,node_idx)
             # @show "TYPE_P:", pnum, node_idx
         elseif(ntype == TYPE_V)
             push!(istk, tt[idx])
-            idx += 3 #skip TYPE_V
-            # node_idx = idx - 4
-            # push!(istk,node_idx)
+            idx += 2 #skip TYPE_V
         elseif(ntype == TYPE_O)
+            @assert tt[idx] == -1
+            tt[idx] = node_id 
+            node_id += 1
             idx += 1  #skip id
             @inbounds op_sym = OP[tt[idx]]
             idx += 1  #skip oc
@@ -174,19 +231,16 @@ function analysize_tape{I,V}(tape::Tape{I,V})
     end
     
     # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(tape.nnode+tape.nvar)
+    tape.bh = Vector{Vector{mPair{Int,Float64}}}(bhlen)
     # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
-    for i=1:tape.nnode+tape.nvar 
+    for i=1:bhlen
         tape.bh[i] = Vector{mPair{Int,Float64}}()
-        # for j=1:tape.bh_length[i]
-        #     push!(tape.bh[i],mPair{Int,Float64}())
-        # end
     end
-    # fill!(tape.bh_length,0)
-    # tape.bh_length = zeros(Int,tape.nnode+tape.nvar)
+    tape.bh_idxes = zeros(Int,bhlen)    
 
-    tape.bh_idxes = zeros(Int,tape.nnode+tape.nvar)    
-   
+    #timing vector for ep reverse
+    @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, length(tape.bh))
+
     # init
 	# @show max(immlen_1st,immlen_2nd)
     resize!(tape.imm, max(immlen_1st,immlen_2nd))
@@ -208,7 +262,6 @@ function AD_V{V}(vvals::Array{V,1}, val) #provide variable value
     I = typeof(length(vvals))
     this = AD{I}(Array{I,1}())
     push!(this.data,TYPE_V)
-    push!(this.data,-1)
     push!(this.data,length(vvals))
     push!(this.data,TYPE_V)
     return this
@@ -280,37 +333,30 @@ end
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
     assert(length(tape.tt)==0)
     istk = Vector{I}()
-    tapeBuilder(expr,tape, pvals, istk)
+    tape_builder(expr,tape, pvals, istk)
     @assert length(istk) == 1
-    analysize_tape(tape)
+    tape_analysize(tape)
 end
 
-function tapeBuilder{I,V}(expr::Real, tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I}) #a JuMP parameter
-    # @show "TYPE_P: ", expr, tape.nextid
+function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I})
     tt = tape.tt
-    push!(tt,TYPE_P)
-    push!(tt,-1)
-    push!(tt,length(pvals)+1)
-    push!(tt,TYPE_P)
+    if isa(expr, Real)
+        push!(tt,TYPE_P)
+        push!(tt,-1)
+        push!(tt,length(pvals)+1)
+        push!(tt,TYPE_P)
 
-    push!(istk,length(tt)-3)
-    push!(pvals,expr)
-    # tape.nnode += 1
-end
-
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I})
-    tt = tape.tt
-    head = expr.head
-    if(head == :ref)  #a JuMP variable
+        push!(istk,length(tt)-3)
+        push!(pvals,expr)
+    elseif isa(expr, Expr) && expr.head == :ref  #a JuMP variable
         # @show "TYPE_V", expr, tape.nextid
         assert(length(expr.args) == 2)
         vidx = expr.args[2]
         push!(tt,TYPE_V)
-        push!(tt,-1)
         push!(tt,vidx)
         push!(tt,TYPE_V)
-        push!(istk,length(tt)-3)
-    elseif(head == :call)
+        push!(istk,length(tt)-2)
+    elseif isa(expr, Expr) && expr.head == :call
         # @show expr.args[2]
         # @show "TYPE_O", expr, tape.nextid
         op = expr.args[1]
@@ -318,12 +364,12 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
         assert(typeof(op)==Symbol)
         if(op==:+ && n==1) 
             #simpliy the expression eliminate 1-ary + node
-            tapeBuilder(expr.args[2],tape,pvals,istk)
+            tape_builder(expr.args[2],tape,pvals,istk)
         elseif (op == :+ && n==0)
             #adding 0.0 to tape
-            tapeBuilder(0.0,tape,pvals,istk)
+            tape_builder(0.0,tape,pvals,istk)
         elseif (op == :- && n==1)
-            tapeBuilder(expr.args[2],tape,pvals,istk)
+            tape_builder(expr.args[2],tape,pvals,istk)
 
             push!(tt,TYPE_O)
             push!(tt,-1)
@@ -337,7 +383,7 @@ function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vec
             # @show length(tt)
         else
             for i in 2:length(expr.args)
-                tapeBuilder(expr.args[i],tape,pvals,istk)
+                tape_builder(expr.args[i],tape,pvals,istk)
             end
             push!(tt,TYPE_O)
             push!(tt,-1)
@@ -369,16 +415,16 @@ end
 ##########################################################################################
 function tapeBuilder{I}(data::Array{I,1})
     tape = Tape{I,Float64}(tt=data)
-    analysize_tape(tape)
+    tape_analysize(tape)
     return tape
 end
 
 ##########################################################################################
-function report_tape_mem(tape)
+function tape_report_mem(tape)
     report_tape_mem(tape,tape.h_type)
 end
 
-function report_tape_mem{I,V}(tape::Tape{I,V},ep::I)
+function tape_report_mem{I,V}(tape::Tape{I,V},ep::I)
     si = sizeof(I)
     sf = sizeof(V)
     i  = 0

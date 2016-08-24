@@ -170,7 +170,7 @@ facts("Reverse gradient") do
 	end
 end
 
-include("runtest_ep3.jl")
+include("runtest_ep.jl")
 ### Version 2 - reimplement Hessian EP
 # include("runtest_ep2.jl")
 

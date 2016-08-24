@@ -22,7 +22,6 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
             stklen += 1
             @inbounds stk[stklen] = val
         elseif(ntype == TYPE_V)
-            idx += 1 #skip ID
             @inbounds val = vvals[tt[idx]]
             idx += 2 #skip TYPE_V
             stklen += 1
@@ -89,7 +88,7 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
             nnz += 1
             @inbounds tape.g[nnz]=adj
             # @show nnz, adj
-            idx -= 3
+            idx -= 2
         elseif(ntype == TYPE_O)
             @inbounds n = tt[idx]
             # @show n
@@ -114,11 +113,11 @@ function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing
     nnz = zero(I)
     @inbounds while(idx > 0)
         ntype = tt[idx]
-            idx -= 1
+        idx -= 1
         if(ntype == TYPE_V)
             nnz += 1
             tape.g_I[nnz] = tt[idx]
-            idx -= 3
+            idx -= 2
         elseif(ntype == TYPE_P)
             idx -= 3
         elseif(ntype == TYPE_O)

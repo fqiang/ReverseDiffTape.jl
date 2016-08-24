@@ -24,7 +24,7 @@ export
     hess_structure2, hess_reverse2, reset_hess2, prepare_reeval_hess2,
     hess_structure3, hess_reverse3, reset_hess3, prepare_reeval_hess3,
     hess_structure4, hess_reverse4, reset_hess4, prepare_reeval_hess4,
-    report_tape_mem
+    tape_report_mem
 
 
 @inline function append_array{I,V}(dest::Vector{V},d_offset::I,src::Vector{V},s_offset::I, n::I)
