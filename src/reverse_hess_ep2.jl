@@ -1,25 +1,27 @@
 #edge pusing algorithm for Hessian reverse AD
 
-function reset_hess2(tape)
-    assert(length(tape.bh) == length(tape.bh_idxes))  
-    for i=1:length(tape.bh)
-        @inbounds tape.bh[i] = Vector{mPair{Int,Float64}}()
+function reset_hess2{I,V}(tape::Tape{I,V})
+    for i =1:length(tape.bhi)
+        @inbounds tape.bhi[i] = Vector{Int}()
+        @inbounds tape.bhv[i] = Vector{Float64}()
     end
-    fill!(tape.bh_idxes,zero(Int))
+
+    fill!(tape.bh_idxes,zero(I))
 
     tape.h_I = Vector{I}() #hess_I
     tape.h_J = Vector{I}() #hess_J
-    tape.hess = Vector{Float64}() #hess value
-    tape.nzh = -one(Int)     #hess indicator
+    tape.hess = Vector{V}() #hess value
+    tape.nzh = -one(I)     #hess indicator
 end
 
-function prepare_reeval_hess2(tape)
-    fill!(tape.bh_idxes,zero(Int))
+function prepare_reeval_hess2{I,V}(tape::Tape{I,V})
+    fill!(tape.bh_idxes,zero(I))
 end
 
-@inline function push_edge2(tape,to,from)
+@inline function push_edge2{I,V}(tape::Tape{I,V},to::I,from::I)
     # @show "push_edge2 - ",to," <--- ", from
-    @inbounds push!(tape.bh[to],mPair{Int,Float64}(from,0.0)) 
+    @inbounds push!(tape.bhi[to],from)
+    @inbounds push!(tape.bhv[to],0.0)
     if to <= tape.nvar && from > tape.nvar
         push_edge2(tape,from,to)
     end
@@ -29,11 +31,12 @@ function hess_struct2{I,V}(tape::Tape{I,V})
     @timing tape.enable_timing_stats tic()
 
     if(tape.nzh != -1)
-        return tape.nzh
+        return 
     end
 
     tt = tape.tt
     tr = tape.tr
+    bhi = tape.bhi
     idx = length(tt)
     trlen = length(tr)
     assert(tape.nnode-1 == length(tr))
@@ -45,7 +48,24 @@ function hess_struct2{I,V}(tape::Tape{I,V})
             idx -= 3
         elseif(ntype == TYPE_V)
             @inbounds v_id = tt[idx]
-            # @assert i_id!=0 && v_idx <= tape.nvar && i_id > tape.nvar
+            # @inbounds lvi = bh[v_id]
+            # @inbounds e = length(lvi)
+            # @inbounds s = bh_v_idxes[v_id] + 1
+
+            # for i = s:e
+            #     @inbounds p_id = lvi[i].i
+            #     if p_id <= tape.nvar
+            #         if p_id < v_id 
+            #             push!(tape.h_I, v_id)
+            #             push!(tape.h_J, p_id)
+            #         else
+            #             push!(tape.h_J, v_id)
+            #             push!(tape.h_I, p_id)
+            #         end
+            #     end
+            # end
+            # @inbounds bh_v_idxes[v_id] = e
+
             idx -= 2 #skip TYPE_V
         elseif(ntype == TYPE_O)
             @inbounds n = tt[idx]
@@ -54,11 +74,11 @@ function hess_struct2{I,V}(tape::Tape{I,V})
             #pushing
             @inbounds i_id = tt[idx-2]
             idx -= 4
-            # assert(i_id!=0 && i_id > tape.nvar)
-            @inbounds lvi = tape.bh[i_id]
+            # @inbounds lvi = bh[i_id]
+            @inbounds lvi = bhi[i_id]
             for j = 1:length(lvi)
-                @inbounds p_id = lvi[j].i
-                # @show p_id
+                # @inbounds p_id = lvi[j].i
+                @inbounds p_id = lvi[j]
                 if(p_id == i_id)
                     for j0=trlen-n+1:trlen 
                         @inbounds ci_id = tr[j0]
@@ -107,32 +127,68 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                 push_edge2(tape,ri_id, li_id)
                 push_edge2(tape,ri_id, ri_id)
             end
-            # @show "after creating", tape.live_vars
             trlen -= n
         end
     end #end while loop
 
-    for i=1:tape.nvar
-        @inbounds lvi = tape.bh[i] 
-        # @show i, length(lvi)
+    @timing tape.enable_timing_stats tape.ep_structure += toq()
+    nothing
+end
+
+function hess_findnz2{I,V}(tape::Tape{I,V})
+    @timing tape.enable_timing_stats tic()
+    bhi = tape.bhi
+    nvar = tape.nvar
+    nz = zero(I)
+    for i = 1:nvar
+        @inbounds lvi = bhi[i]
         for j = 1:length(lvi)
-            @inbounds v_id = lvi[j].i
-            if v_id <= tape.nvar
+            @inbounds v_id = lvi[j]
+            if v_id <= nvar
+                nz += 1
+            end
+        end
+    end
+    tape.nzh = nz
+    @timing tape.enable_timing_stats tape.ep_findnz += toq()
+    nothing
+end
+
+function hess_struct2_recovery{I,V}(tape::Tape{I,V}) 
+    @timing tape.enable_timing_stats tic()
+    resize!(tape.h_I, tape.nzh)
+    resize!(tape.h_J, tape.nzh)
+    resize!(tape.hess, tape.nzh)
+
+    bhi = tape.bhi
+    nvar = tape.nvar
+    h_I = tape.h_I
+    h_J = tape.h_J
+    nz = zero(I)
+    
+    for i=1:nvar
+        # @inbounds lvi = bh[i]
+        @inbounds lvi = bhi[i]
+        for j = 1:length(lvi)
+            # @inbounds v_id = lvi[j].i
+            @inbounds v_id = lvi[j]
+            if v_id <= nvar
                 if v_id <= i  #assert lower trangular
-                    push!(tape.h_I,i)
-                    push!(tape.h_J,v_id)
+                    nz += 1
+                    @inbounds h_I[nz] = i
+                    @inbounds h_J[nz] = v_id
                 else 
-                    push!(tape.h_I,v_id)
-                    push!(tape.h_J,i)
+                    nz += 1
+                    @inbounds h_I[nz] = v_id
+                    @inbounds h_J[nz] = i
                 end
             end
         end
     end
 
-    tape.nzh = length(tape.h_I)
-    resize!(tape.hess, tape.nzh)
-    @timing tape.enable_timing_stats tape.ep_hess_structure += toq()
-    return tape.nzh
+    @assert tape.nzh == nz
+    @timing tape.enable_timing_stats tape.ep_structure_recovery += toq()
+    nothing
 end
 
 function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
@@ -189,7 +245,10 @@ function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Arra
     # assert(tape.imm2ord>=immlen)
     tape.imm2ordlen = immlen
     # @show stklen
-    resize!(tape.imm,max(tape.imm1ordlen,tape.imm2ordlen)) #if not resize memory will be hold in julia , and not claimed by gc
+    if length(tape.imm) < immlen
+        resize!(tape.imm,immlen) #if not resize memory will be hold in julia , and not claimed by gc
+        # @show "ep - imm length $immlen"
+    end
 
     @timing tape.enable_timing_stats tape.ep_forward_time += toq()
 
@@ -199,21 +258,25 @@ end
 @inline function update2(tape,to,from,w)
     # @show "update2 - ", to, "<-- ", from, w
     @inbounds tape.bh_idxes[to] += 1  
-    #assert(tape.bh[to][tape.bh_idxes[to]].i == from)
-    @inbounds tape.bh[to][tape.bh_idxes[to]].w = w
+    # assert(tape.bhi[to][tape.bh_idxes[to]] == from)
+    @inbounds tape.bhv[to][tape.bh_idxes[to]] = w
 
     if to <= tape.nvar && from > tape.nvar
         update2(tape,from,to,w)
     end
 end
 
-function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
+function reverse_pass2_2ord{I,V}(tape::Tape{I,V})
     tr = tape.tr
     tt = tape.tt
+    bhi = tape.bhi
+    bhv = tape.bhv
+    bh_idxes = tape.bh_idxes
     idx = length(tt)
     trlen = length(tr)
     imm = tape.imm
     immlen = tape.imm2ordlen
+    nnz = zero(I)
     # assert(length(imm) == immlen)  
 
     adjs = tape.stk
@@ -240,6 +303,20 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             idx -= 3
         elseif ntype == TYPE_V
             @inbounds v_id = tt[idx]
+
+            # @inbounds lvi = bh[v_id]
+            # @inbounds e = bh_idxes[v_id]
+            # @inbounds s = bh_v_idxes[v_id] + 1
+
+            # for i = s:e
+            #     @inbounds p = lvi[i]
+            #     if p.i <= tape.nvar
+            #         nnz += 1
+            #         @inbounds tape.hess[nnz] = p.w
+            #     end
+            # end
+            # @inbounds bh_v_idxes[v_id] = e
+
             idx -= 2 #skip TYPE_V
             @timing tape.enable_timing_stats node_id = v_id  #timing
         elseif ntype == TYPE_O 
@@ -250,7 +327,8 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
             @timing tape.enable_timing_stats node_id = i_id #timing
             idx -= 4 #skip TYPE_O
 
-            @inbounds lvi = tape.bh[i_id]
+            @inbounds lvi = bhi[i_id]
+            @inbounds lvv = bhv[i_id]
             @inbounds tr0_id = tr[trlen]
             # @show op_sym, lvi
             imm_counter = zero(I)
@@ -259,9 +337,11 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 #pushing
                 @inbounds t0 = imm[immlen-1]
                 for j=1:length(lvi)
-                    @inbounds p = lvi[j]
-                    p_id = p.i
-                    w = p.w
+                    # @inbounds p = lvi[j]
+                    # p_id = p.i
+                    # w = p.w
+                    @inbounds p_id = lvi[j]
+                    @inbounds w = lvv[j]
                     if p_id == i_id                     
                         w_bar = t0*t0*w
                         update2(tape,tr0_id,tr0_id,w_bar)     
@@ -292,9 +372,11 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dr = imm[immlen-3]
                     
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
                     
                         dlw = dl*w
                         drw = dr*w
@@ -336,9 +418,11 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dr = imm[immlen-1]
                     
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
                     
                         dlw = dl*w
                         drw = dr*w
@@ -373,9 +457,12 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 elseif  op_sym == :-
                     #pushing
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
+
                         if p_id == i_id
                             update2(tape,li_id,li_id,w)
                             update2(tape,tr0_id,li_id,-1.0*w)
@@ -405,9 +492,12 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 elseif op_sym == :+
                     #pushing
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
+
                         if p_id == i_id
                             update2(tape,li_id,li_id,w)
                             update2(tape,tr0_id,li_id,w)
@@ -441,10 +531,12 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     @inbounds dr = imm[immlen-3]
                     
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
-                    
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
+
                         dlw = dl*w
                         drw = dr*w
                         if p_id == i_id
@@ -486,9 +578,12 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                 if op_sym == :+
                     #pushing
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        @inbounds p_id = lvi[j]
+                        @inbounds w = lvv[j]
+
                         if p_id == i_id  
                             for j0=trlen-n+1:trlen
                                 @inbounds ci_id = tr[j0]
@@ -522,10 +617,12 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
                     #pushing        
                     r = immlen - round(I,n+n*(n-1)/2)+1        
                     for j = 1:length(lvi)
-                        @inbounds p = lvi[j]
-                        p_id = p.i
-                        w = p.w
-                        
+                        # @inbounds p = lvi[j]
+                        # p_id = p.i
+                        # w = p.w
+                        p_id = lvi[j]
+                        w = lvv[j]
+
                         k = r
                         if p_id == i_id
                             for j0=trlen-n+1:trlen
@@ -593,35 +690,106 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V}, factor::V)
         @timing tape.enable_timing_stats tape.ep_reverse_times[node_id] += toq()
         # println("++++++++++++++++++++++++++++++++++++")
     end  #end while
-    
-    @timing tape.enable_timing_stats tic()
-    nz = zero(I)
-    for i = 1:tape.nvar
-        @timing tape.enable_timing_stats tic()
-        @inbounds lvi = tape.bh[i]
-        for j=1:length(lvi)
-            @inbounds p = lvi[j]
-            v_id = p.i
-            w = p.w
-            if v_id <= tape.nvar
-                nz += 1
-                @inbounds tape.hess[nz] = w*factor
-            end
-        end
-        @timing tape.enable_timing_stats tape.ep_reverse_times[i] += toq()
-    end
-    @timing tape.enable_timing_stats tape.ep_recovery_time += toq()
-    assert(nz == tape.nzh)
-    return tape.nzh
+    nothing
 end
 
+# function separate(bh::Vector{Vector{mPair{Int,Float64}}})
+#     bhi = Vector{Vector{Int}}(length(bh))
+#     bhv = Vector{Vector{Float64}}(length(bh))
 
+#     for i = 1:length(bh)
+#         @inbounds lvi = bh[i]
+#         @inbounds bhi[i] = Vector{Int}(length(lvi))
+#         @inbounds bhv[i] = Vector{Float64}(length(lvi))
+#         @inbounds bhii = bhi[i]
+#         @inbounds bhvi = bhv[i]
+#         for j = 1:length(bhii)
+#             @inbounds bhii[j] = lvi[j].i
+#             @inbounds bhvi[j] = lvi[j].w
+#         end
+#     end
+#     return bhi, bhv
+# end
+
+# function recovery2(tape::Tape{Int,Float64}, bhi::Vector{Vector{Int}}, bhv::Vector{Vector{Float64}}, h::Vector{Float64}, nvar::Int, factor::Float64)
+#     @timing tape.enable_timing_stats tic()
+#     nnz = zero(Int)
+#     for i = 1:nvar
+#         @inbounds bhii = bhi[i]
+#         @inbounds bhvi = bhv[i]
+#         for j = 1:length(bhii)
+#             @inbounds id = bhii[j]
+#             if id <= nvar
+#                 nnz += 1
+#                 @inbounds h[nnz] = factor*bhvi[j]
+#             end
+#         end
+#     end 
+#     @assert (length(h) == nnz) length(h),nnz
+#     @timing tape.enable_timing_stats tape.ep_recovery_time += toq()
+# end
+
+@inline function hess_recovery2(tape::Tape{Int,Float64}, factor::Float64)
+    @timing tape.enable_timing_stats tic()
+    h = tape.hess
+    nvar = tape.nvar
+    bhi = tape.bhi
+    bhv = tape.bhv
+
+    nnz = zero(Int)
+    for i = 1:nvar
+        @inbounds bhii = bhi[i]
+        @inbounds bhvi = bhv[i]
+        for j = 1:length(bhii)
+            @inbounds id = bhii[j]
+            if id <= nvar
+                nnz += 1
+                @inbounds h[nnz] = factor*bhvi[j]
+            end
+        end
+    end 
+    @assert (length(h) == nnz) length(h),nnz
+    @timing tape.enable_timing_stats tape.ep_recovery_time += toq()
+    nothing
+end
+
+# function handle_sum_node(tape::Tape{Int,Float64}, i_id::Int, n::Int, trlen::Int)
+#     @inbounds lvi = tape.bhi[i_id]
+#     @inbounds lvv = tape.bhv[i_id]
+#     tr = tape.tr
+
+#     for j = 1:length(lvi)
+#         @inbounds p_id = lvi[j]
+#         @inbounds w = lvv[j]
+
+#         if p_id == i_id  
+#             for j0=trlen-n+1:trlen
+#                 @inbounds ci_id = tr[j0]
+#                 update2(tape,ci_id,ci_id,w)
+#                 for j1=j0+1:trlen
+#                     @inbounds cii_id = tr[j1]
+#                     update2(tape,cii_id,ci_id,w)
+#                 end #j1 +=1
+#             end #j0+=1
+#         else #p_idx != i_idx
+#             for k=trlen-n+1:trlen
+#                 @inbounds ci_id = tr[k]
+#                 w_bar = w
+#                 if ci_id == p_id
+#                     w_bar = 2.0*w
+#                 end
+#                 update2(tape,ci_id,p_id,w_bar)
+#             end
+#         end
+#     end
+# end
 
 #Interface function
 function hess_structure2{I,V}(tape::Tape{I,V})
-    # @time hess_struct2(tape,0)
-    nz = hess_struct2(tape)
-    return nz
+    @assert tape.bh_type == 1
+    hess_struct2(tape)
+    hess_findnz2(tape)
+    hess_struct2_recovery(tape)
 end
 
 function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
@@ -630,6 +798,9 @@ end
 
 function hess_reverse2{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
     @timing tape.enable_timing_stats tape.ep_n += 1
+
     forward_pass2_2ord(tape,vvals,pvals)
-    reverse_pass2_2ord(tape,factor)
+    reverse_pass2_2ord(tape)
+    # @time recovery2(tape, tape.bhi,tape.bhv,tape.hess,tape.nvar, factor)
+    hess_recovery2(tape,factor)
 end

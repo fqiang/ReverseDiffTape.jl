@@ -7,26 +7,10 @@ macro timing(cond,code)
     end
 end
 
-#type alias
-typealias OP_TYPE Int
-typealias IDX_TYPE Int
-typealias EdgeSet{I,V} Dict{I,Dict{I,V}}
-
 #the AD types below
 const TYPE_V = 1    #variable node
 const TYPE_P = 2    #param node
 const TYPE_O = 3
-
-type mPair{I,V}
-    i::I
-    w::V
-    function mPair()
-        return new(zero(I),0.0)  #not valid entry
-    end
-    function mPair(idx,ww)
-        return new(idx,ww)
-    end
-end
 
 type Tape{I,V}
     tt::Vector{I}
@@ -41,9 +25,12 @@ type Tape{I,V}
     hess::Vector{V}
     nzh::I
 
-    #use by ep2
-    bh::Vector{Vector{mPair{I,V}}}  #big hessian matrix for everybody
+    #bh
+    bh_type::I # 0 - two vector - 1 dict
+    bhi::Vector{Vector{I}}
+    bhv::Vector{Vector{V}}
     bh_idxes::Vector{I}   #current horizontal indicies
+    bh::Vector{Dict{I,V}}
     
     imm::Vector{V}
     imm1ordlen::I
@@ -62,11 +49,13 @@ type Tape{I,V}
     ep_reverse_times::Vector{V}
     ep_forward_time::V
     ep_recovery_time::V
-    ep_hess_structure::V
+    ep_structure::V
+    ep_structure_recovery::V
+    ep_findnz::V
     ep_n::I
 
 
-    function Tape(;imm=Vector{V}(), tt=Vector{I}(), with_timing=false)
+    function Tape(;imm=Vector{V}(), tt=Vector{I}(), with_timing=false, bh_type=1)
         tape = new(
             tt,  #tt
             Vector{V}(),  #stack - used for adjoints in reverse sweep
@@ -80,8 +69,12 @@ type Tape{I,V}
             Vector{V}(),  #hess value
             -one(I),      #hess indicator
 
-            Vector{Vector{mPair{I,V}}}(),  #big hessian matrix
+            bh_type, #bh_type
+            Vector{Vector{I}}(),
+            Vector{Vector{V}}(),
             Vector{I}(),    #current horizontal indicies
+            Vector{Dict{I,V}}(),
+            
             
             imm, #imm , using for both 1st and 2nd order
             zero(I),     #1st order length
@@ -91,7 +84,7 @@ type Tape{I,V}
            
             zero(I),zero(I),zero(I),zero(I),zero(I)
 
-            ,with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(I) #timing stat
+            ,with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
         finalizer(tape, tape_cleanup)
         return tape
@@ -108,15 +101,21 @@ function tape_cleanup{I,V}(tape::Tape{I,V})
         f = open("ep_forward_time.txt","w")
         writedlm(f, tape.ep_forward_time)
         close(f)
+
         f = open("ep_recovery_time.txt","w")
         writedlm(f, tape.ep_recovery_time)
         close(f)
+        
         f = open("ep_n.txt","w")
         writedlm(f,tape.ep_n)
         close(f)
 
-        f = open("ep_hess_structure.txt","w")
-        writedlm(f, tape.ep_hess_structure)
+        f = open("ep_structure.txt","w")
+        writedlm(f, tape.ep_structure)
+        close(f)
+
+        f = open("ep_structure_recovery.txt","w")
+        writedlm(f, tape.ep_structure_recovery)
         close(f)
 
         f = open("tt.txt","w")
@@ -127,13 +126,26 @@ function tape_cleanup{I,V}(tape::Tape{I,V})
         writedlm(f, tape.tr)
         close(f)
 
-        v = Vector{I}(length(tape.bh))
-        for i =1:length(tape.bh)
-            v[i] = length(tape.bh[i])
-        end
-        f = open("ep_num_edges.txt","w")
-        writedlm(f, v)
+        f = open("ep_findnz.txt","w")
+        writedlm(f, tape.ep_findnz)
         close(f)
+
+        if tape.bh_type == 1
+            f = open("ep_bhi.txt","w")
+            v = Vector{I}(length(tape.bhi))
+            for i =1:length(tape.bhi)
+                v[i] = length(tape.bhi[i])
+                for j = 1:length(tape.bhi[i])
+                    write(f, "$(tape.bhi[i][j]) ")
+                end
+                write(f,"\n")
+            end
+            close(f)
+
+            f = open("ep_num_edges.txt","w")
+            writedlm(f, v)
+            close(f)
+        end
     end
 end
 
@@ -230,20 +242,34 @@ function tape_analysize{I,V}(tape::Tape{I,V})
         end
     end
     
-    # used by ep2
-    tape.bh = Vector{Vector{mPair{Int,Float64}}}(bhlen)
-    # tape.bh_length = round(Int,readdlm("log4000_1_bh_length.txt")[:,1])
-    for i=1:bhlen
-        tape.bh[i] = Vector{mPair{Int,Float64}}()
+    # bh
+    # @show tape.bh_type
+    if tape.bh_type == 1
+        tape.bhi = Vector{Vector{Int}}(bhlen)
+        tape.bhv = Vector{Vector{Float64}}(bhlen)
+        for i=1:bhlen
+            @inbounds tape.bhi[i] = Vector{Int}()
+            @inbounds tape.bhv[i] = Vector{Float64}()
+        end
+        tape.bh_idxes = zeros(Int,bhlen)  
+    elseif tape.bh_type == 2 
+        tape.bh = Vector{Dict{Int,Float64}}(bhlen);
+        for i = 1:bhlen
+            @inbounds tape.bh[i] = Dict{Int,Float64}();
+        end
+    else
+        @assert false tape.bh_type
     end
-    tape.bh_idxes = zeros(Int,bhlen)    
 
     #timing vector for ep reverse
-    @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, length(tape.bh))
+    @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
 
     # init
-	# @show max(immlen_1st,immlen_2nd)
-    resize!(tape.imm, max(immlen_1st,immlen_2nd))
+	immlen = max(immlen_1st,immlen_2nd)
+    if length(tape.imm) < immlen
+        resize!(tape.imm, immlen)
+        @show "imm size $immlen"
+    end
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
     resize!(tape.stk, tape.nnode) 
@@ -254,10 +280,10 @@ end
 
 
 immutable AD{I}
-    data::Array{I,1}
+    data::Vector{I}
 end
 
-function AD_V{V}(vvals::Array{V,1}, val) #provide variable value
+function AD_V{V}(vvals::Vector{V}, val::V) #provide variable value
     push!(vvals,val)
     I = typeof(length(vvals))
     this = AD{I}(Array{I,1}())
@@ -274,7 +300,7 @@ function AD_V{I}(idx::I) #without variable value
     push!(this.data,TYPE_V)
     return this
 end
-function AD_P{V}(pvals::Array{V,1},val)
+function AD_P{V}(pvals::Vector{V},val)
     push!(pvals,val)
     I = typeof(length(pvals))
     this = AD{I}(Array{I,1}())
@@ -306,7 +332,7 @@ function AD_O{I,N}(s::Symbol,args::NTuple{N,AD{I}})
     # @show N
     # @show n
     assert(N>1)
-    this = AD{I}(Array{I,1}())
+    this = AD{I}(Vector{I}())
     @simd for i = 1:1:N
         append!(this.data,args[i].data)
     end
@@ -413,8 +439,8 @@ end
 # tape builder from types
 #
 ##########################################################################################
-function tapeBuilder{I}(data::Array{I,1})
-    tape = Tape{I,Float64}(tt=data)
+function tapeBuilder{I}(data::Array{I,1}, t::I=1)
+    tape = Tape{I,Float64}(tt=data, bh_type=t)
     tape_analysize(tape)
     return tape
 end

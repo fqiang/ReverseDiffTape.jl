@@ -7,7 +7,7 @@ using NaNMath; nm=NaNMath
 #Operator overloading function for AD types
 const B_OP_START = 1
 const OP = Array{Symbol,1}([:+,:-,:*,:/,:^])
-const S_TO_OC = Dict{Symbol,OP_TYPE}()
+const S_TO_OC = Dict{Symbol,Int}()
 const S_TO_DIFF = Dict{Symbol,Array{Any,1}}()
 const S_TO_DIFF_FLAG = Dict{Symbol,Array{Bool,1}}()
 const B_OP_END = length(OP)

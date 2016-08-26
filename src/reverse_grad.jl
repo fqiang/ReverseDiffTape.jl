@@ -57,6 +57,7 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
     end
     tape.imm1ordlen = immlen
     # @show imm
+    @assert length(tape.imm) >= immlen
     return @inbounds stk[1]
 end
 
@@ -107,7 +108,9 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V})  #repeated indicies
 end
 
 function grad_struct{I,V}(tape::Tape{I,V}) #repeated indexes, in reverse tracing order
-    assert(tape.nzg==-1)
+    if tape.nzg!=-1
+        return tape.nzg
+    end
     tt = tape.tt
     idx = length(tt)
     nnz = zero(I)

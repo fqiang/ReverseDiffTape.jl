@@ -4,7 +4,7 @@ module TapeInterface
 using ReverseDiffTape
 import MathProgBase
 
-const EPS=1e-5
+const EPS=1e-7
 
 
 export  TapeSolver, 
@@ -28,14 +28,13 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     jd::MathProgBase.AbstractNLPEvaluator
     numVar::Int
     numConstr::Int
+    imm::Vector{Float64}
     pvals::Vector{Float64}
     obj_tt::Tape{Int,Float64}
     constr_tt::Vector{Tape{Int,Float64}}
     nl_idxes::Vector{Int}
     init::Int
-    # laghess_tt::Tape{Int,Float64}  #full expr
-    # p::Vector{Float64}             #obj factor + lambda
-
+    
     jac_I::Vector{Int}
     jac_J::Vector{Int}
     jac_nnz::Int
@@ -50,6 +49,7 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     eval_g_timer::Float64
     eval_grad_f_timer::Float64
     eval_jac_g_timer::Float64
+    hesslag_structure_timer::Float64
     eval_hesslag_timer::Float64
 
     jinit_timer::Float64
@@ -59,11 +59,11 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     jeval_jac_g_timer::Float64
     jeval_hesslag_timer::Float64
 
-    f_times::Int
-    g_times::Int
-    grad_f_times::Int
-    jac_g_times::Int
-    hesslag_times::Int
+    n_eval_f::Int
+    n_eval_g::Int
+    n_eval_grad_f::Int
+    n_eval_jac_g::Int
+    n_eval_hesslag::Int
 
     #jump's temp storage
     jfval::Float64
@@ -80,11 +80,13 @@ end
 
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr)
+    imm = Vector{Float64}()
     return TapeNLPEvaluator(nlpe, 
         numVar,numConstr,
+        imm, #imm 
         Vector{Float64}(), #parameter values
         
-        Tape{Int,Float64}(), #objective tape
+        Tape{Int,Float64}(imm=imm), #objective tape
         Vector{Tape{Int,Float64}}(),  #constraints tape
 
         Vector{Int}(), #nl_idxes
@@ -96,9 +98,10 @@ function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numCons
         Vector{Int}(), Vector{Int}(),-1, #Jacobian
         
         Vector{Int}(), Vector{Int}(),-1, #Hessian
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #my timer
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #my timer
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0,   #jump timer
         0,0,0,0,0,                      #counter
+        
         0.0, 
         Vector{Float64}(), 
         Vector{Float64}(),
@@ -128,6 +131,7 @@ function MathProgBase.status(m::TapeData)
     @show e.eval_g_timer
     @show e.eval_grad_f_timer
     @show e.eval_jac_g_timer
+    @show e.hesslag_structure_timer
     @show e.eval_hesslag_timer
     
     @show e.jinit_timer
@@ -137,11 +141,11 @@ function MathProgBase.status(m::TapeData)
     @show e.jeval_jac_g_timer
     @show e.jeval_hesslag_timer
 
-    @show e.f_times
-    @show e.g_times
-    @show e.grad_f_times
-    @show e.jac_g_times
-    @show e.hesslag_times
+    @show e.n_eval_f
+    @show e.n_eval_g
+    @show e.n_eval_grad_f
+    @show e.n_eval_jac_g
+    @show e.n_eval_hesslag
 
     return MathProgBase.status(m.m)
 end
@@ -175,20 +179,29 @@ end
 
 function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector{Symbol})
 	@show "TapeNLPEvaluator - initialize"
-
-    tic()
     jd = d.jd
-    MathProgBase.initialize(jd,[:Grad,:Jac,:ExprGraph,:Hess])
-    jd_init = toq()
-    @show "JuMP evaluator initialize ", jd_init
-
+    
 	#let's building up the tape
     if(d.init == -1)
+        tic()
+        MathProgBase.initialize(jd,[:Grad,:Jac,:ExprGraph,:Hess])
+        d.jinit_timer += toq()
+        @show "JuMP evaluator initialize ", d.jinit_timer
+        #initilize JuMP temp storage
+        resize!(d.jgrad_f,d.numVar)
+        resize!(d.jg,d.numConstr)
+        (d.jjac_I,d.jjac_J) = MathProgBase.jac_structure(d.jd)
+        resize!(d.jjac_g,length(d.jjac_I))
+        (d.jlaghess_I, d.jlaghess_J) = MathProgBase.hesslag_structure(d.jd)
+        resize!(d.jlaghess_h,length(d.jlaghess_J))
+        #JuMP storage done
+
         tic()
     	objexpr = MathProgBase.obj_expr(jd)
        
     	assert(length(d.pvals) == 0)  ## assume no values in pvals
     	tapeBuilder(objexpr,d.obj_tt,d.pvals)
+        grad_structure(d.obj_tt)
         # hesslag_expr = AD(d.obj_tt.tt)*AD_P(d.p,1.0)
 
         for i =1:d.numConstr
@@ -199,9 +212,10 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
             # @show conexpr.args[1]
             # @show dump(conexpr)
             j = length(conexpr.args)==3?1:3
-            tt = Tape{Int,Float64}()
+            tt = Tape{Int,Float64}(imm=d.imm)
             tapeBuilder(conexpr.args[j],tt,d.pvals)
             push!(d.constr_tt,tt)
+            grad_structure(tt)
             # hesslag_expr = hesslag_expr + AD(tt.tt)*AD_P(d.p,1.0)
             # @show d.constr_tt[i]
         end
@@ -209,17 +223,9 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
         @assert length(d.constr_tt) == d.numConstr
         # @assert length(d.p) == 1+d.numConstr
 
-        d.init_timer = toq()
+        d.init_timer += toq()
         @show "TapeNLPEvaluator - tape build ",d.init_timer
 
-        #initilize JuMP temp storage
-        resize!(d.jgrad_f,d.numVar)
-        resize!(d.jg,d.numConstr)
-        (d.jjac_I,d.jjac_J) = MathProgBase.jac_structure(d.jd)
-        resize!(d.jjac_g,length(d.jjac_I))
-
-        (d.jlaghess_I, d.jlaghess_J) = MathProgBase.hesslag_structure(d.jd)
-        resize!(d.jlaghess_h,length(d.jlaghess_J))
 
         d.init = 1  #set initialized tapes
     end
@@ -244,8 +250,8 @@ function MathProgBase.eval_f(d::TapeNLPEvaluator, x)
     v = feval(d.obj_tt,x,d.pvals)
     d.eval_f_timer += toq()
     
-    # assert(d.jfval == v)
-    d.f_times += 1
+    valueEqual(d.jfval, v)
+    d.n_eval_f += 1
     return v
 end
 
@@ -254,7 +260,7 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     assert(length(g) == length(x))
     fill!(g,0.0)
 	assert(sum(g) == 0.0)
-
+    fill!(d.jgrad_f, 0.0)
     #JuMP    
     # jg = Array{Float64,1}(length(x))
     tic()
@@ -263,10 +269,7 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     
     #tape
     tape = d.obj_tt
-    if tape.nzg==-1
-        grad_structure(tape)
-    end
-
+    
     tic()
     grad_reverse(tape,x,d.pvals)
     d.eval_grad_f_timer += toq()
@@ -274,8 +277,8 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     for i=1:length(tape.g_I)
         @inbounds g[tape.g_I[i]] += tape.g[i]
     end
-    assertArrayEqualEps(g,d.jgrad_f)
-    d.grad_f_times += 1
+    arrayEqual(g,d.jgrad_f)
+    d.n_eval_grad_f += 1
     return
 end
 
@@ -297,25 +300,20 @@ function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     d.eval_g_timer += toq()
     
     # @show g,jg
-    assertArrayEqualEps(g,d.jg)
-    d.g_times += 1
+    arrayEqual(g,d.jg)
+    d.n_eval_g += 1
     return
 end
 
 
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
-    #jump
-    # jV = ones(Float64,length(d.jjac_I))
-    # jcsc = sparse(d.jjac_I,d.jjac_J,jV)
-
-
     #tape
-    if(d.jac_nnz != -1) 
+    if d.jac_nnz != -1
         return d.jac_I, d.jac_J
     end
 
     for i=1:d.numConstr
-        tape_i = d.constr_tt[i]
+        @inbounds tape_i = d.constr_tt[i]
         grad_structure(tape_i)
         v = Vector{Int}(length(tape_i.g_I))
         fill!(v,i)
@@ -324,9 +322,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     end
     
     assert(length(d.jac_I) == length(d.jac_J))
-    # V = ones(Float64,length(d.jac_I))
-    # csc = sparse(d.jac_I,d.jac_J,V)
-
+    
     d.jac_nnz = length(d.jac_I)
     return d.jac_I, d.jac_J
 end
@@ -351,13 +347,11 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     end
     d.eval_jac_g_timer += toq()
     
-    # csc = sparse(d.jac_I,d.jac_J,J)
-    # jcsc = sparse(d.jd.jac_I,d.jd.jac_J,jJ)
-    # matrixEqaul(csc,jcsc)
+    csc = sparse(d.jac_I,d.jac_J,J)
+    jcsc = sparse(d.jjac_I,d.jjac_J,d.jjac_g)
+    matrixEqaul(csc,jcsc)
 
-    # @show d.eval_jac_g_timer
-    # @show d.jd.eval_jac_g_timer
-    d.jac_g_times += 1
+    d.n_eval_jac_g += 1
     return
 end
 
@@ -378,41 +372,24 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
         return d.laghess_I, d.laghess_J        
     end
     
+    h_I = d.laghess_I
+    h_J = d.laghess_J
+    @assert length(h_I) == length(h_J) == 0
     tic()
     hess_structure2(d.obj_tt)
-    I = d.obj_tt.h_I
-    J = d.obj_tt.h_J
+    append!(d.laghess_I, d.obj_tt.h_I)
+    append!(d.laghess_J, d.obj_tt.h_J)
     
     for i=1:length(d.nl_idxes)
         @inbounds tt = d.constr_tt[d.nl_idxes[i]]
         hess_structure2(tt)
-        append!(I,tt.h_I)
-        append!(J,tt.h_J)
+        append!(d.laghess_I,tt.h_I)
+        append!(d.laghess_J,tt.h_J)
     end
-    hesslag_time = toq()
-    @show hesslag_time
-    
-    # hess_structure2(d.laghess_tt)
-    # I = d.laghess_tt.h_I
-    # J = d.laghess_tt.h_J
+    d.hesslag_structure_timer += toq()
+    d.laghess_nnz = length(d.laghess_I)
 
-    # assert(length(I) == length(J))
-    # V = ones(Float64,length(I))
-    # csc = sparse(I,J,V,d.numVar,d.numVar)
-    
-
-    # jV = ones(Float64,length(d.jlaghess_I))
-    # jcsc = sparse(d.jlaghess_I,d.jlaghess_J,jV,d.numVar,d.numVar)
-    
-    
-    d.laghess_nnz = length(I)
-    d.laghess_I = I
-    d.laghess_J = J
-
-    # @show "start drawing"
-    # writedlm("hess_structure.txt", csc)
-    # @show "end drawing"
-    @show "Hessian nnz list", length(d.laghess_I)
+    @show "Hessian nnz list", d.laghess_nnz
 
     return  d.laghess_I, d.laghess_J
 end
@@ -442,14 +419,7 @@ function MathProgBase.eval_hesslag(
     for i=1:length(d.nl_idxes)
         @inbounds prepare_reeval_hess2(d.constr_tt[d.nl_idxes[i]])
     end
-
-    # prepare_reeval_hess2(d.laghess_tt)
     ## clean up done
-
-    # d.p[1] = obj_factor
-    # for i = 2:length(d.p)
-    #     @inbounds d.p[i] = lambda[i-1]
-    # end
 
     tic()
     hess_reverse2(d.obj_tt,x,d.pvals,obj_factor)
@@ -468,21 +438,18 @@ function MathProgBase.eval_hesslag(
         end
     end
     d.eval_hesslag_timer += toq()
-    # hess_reverse2(d.laghess_tt,x,d.p)
-    # H = d.laghess_tt.hess
-    # d.eval_hesslag_timer += toq()
+   
 
     csc = sparse(d.laghess_I,d.laghess_J,H)
-    jcsc = sparse(d.jd.hess_I,d.jd.hess_J,d.jlaghess_h)
-   
+    jcsc = sparse(d.jlaghess_I,d.jlaghess_J,d.jlaghess_h)
+    
     matrixEqaul(csc,jcsc)
-    # @show d.eval_hesslag_timer
-    # @show d.jd.eval_hesslag_timer
-    d.hesslag_times += 1
+    d.n_eval_hesslag += 1
     return
 end
 
-function assertArrayEqualEps(a1,a2)
+function arrayEqual(a1,a2)
+    @show "checking array equals"
     @assert length(a1)==length(a2)
     for i=1:length(a1)
         v1 = a1[i]
@@ -490,7 +457,7 @@ function assertArrayEqualEps(a1,a2)
         if (isnan(v1) && isnan(v2)) || (isinf(v1) && isinf(v2))
             return 
         else
-            assert(abs(v1-v2)<EPS)
+            @assert abs(v1-v2)<EPS
         end
     end
 end
@@ -499,13 +466,18 @@ function matrixEqaul(mat1,mat2)
     @show "checking matrix equal"
     (n1,m1) = size(mat1)
     (n2,m2) = size(mat2)
-    assert(n1 == n2)
-    assert(m2 == m2)
+    @assert n1 == n2
+    @assert m2 == m2
     for i=1:n1
         for j=1:m1
-            @assert abs(mat1[i,j]-mat2[i,j])<EPS  "$(i), $(j)"
+            @assert abs(mat1[i,j]-mat2[i,j])<EPS  "($(i), $(j)), $(mat1[i,j]), $(mat2[i,j]) , $(mat1[i,j]-mat2[i,j])"
         end
     end
+end
+
+function valueEqual(v1, v2)
+    @show "checking value equal"
+    @assert abs(v1-v2) < EPS  "$v1, $v2 , $(v1-v2)"
 end
 
 function reset_timer(d)
@@ -514,7 +486,9 @@ function reset_timer(d)
     d.eval_grad_f_timer = 0.0
     d.eval_g_timer = 0.0
     d.eval_jac_g_timer = 0.0
+    d.hesslag_structure_timer = 0.0
     d.eval_hesslag_timer = 0.0
+
 
     d.jinit_timer = 0.0
     d.jeval_f_timer = 0.0
@@ -523,11 +497,11 @@ function reset_timer(d)
     d.jeval_jac_g_timer = 0.0
     d.jeval_hesslag_timer = 0.0
 
-    d.f_times = 0
-    d.grad_f_times = 0
-    d.g_times = 0
-    d.jac_g_times = 0
-    d.hesslag_times = 0
+    d.n_eval_f = 0
+    d.n_eval_grad_f = 0
+    d.n_eval_g = 0
+    d.n_eval_jac_g = 0
+    d.n_eval_hesslag = 0
 end
 
 
