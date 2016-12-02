@@ -1,6 +1,6 @@
 
 #forward evaluation for a scalar function
-function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
+function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector{V})
     tt = tape.tt
     idx = one(I)
     
@@ -8,38 +8,84 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
     stklen = zero(I)
     
     @inbounds while(idx <= length(tt))
-        # @show idx
         ntype = tt[idx]
-        idx += 1
         # @show ntype
-        if(ntype == TYPE_P)
-            idx += 1 #skip ID
-            @inbounds val = pvals[tt[idx]]
-            idx += 1
+        # @show stklen, stk
+        
+        # if ntype == TYPE_P
+        #     @assert false
+        
+        # else
+        if ntype == TYPE_V
             stklen += 1
-            @inbounds stk[stklen] = val
-            idx += 1 #skip TYPE_P
-        elseif(ntype == TYPE_V)
-            @inbounds val = vvals[tt[idx]]
-            idx += 1
-            stklen += 1
-            @inbounds stk[stklen] = val
-            idx += 1 #skip TYPE_V
-        elseif(ntype == TYPE_O)
-            idx += 1 #skip ID
-            @inbounds oc = tt[idx]
-            idx += 1
-            @inbounds n = tt[idx]
-            idx += 1
-            idx += 1 #skip TYPE_O
+            @inbounds stk[stklen] = vvals[tt[idx+1]]
+            idx += 3
+
+        elseif ntype == TYPE_O
+            @inbounds oc = tt[idx+2]
+            @inbounds n = tt[idx+3]
+
             if n == 1 # 1-argument functions
                 @inbounds stk[stklen] = eval_0ord(OP[oc],stk[stklen])
-            else
+            elseif n == 2
                 # @show OP[oc],stk
-                @inbounds val = eval_0ord(OP[oc],stk,stklen-n+1,stklen)  #using MyArray
+                @inbounds val = eval_0ord(OP[oc],stk[stklen-1],stk[stklen])  
+                stklen -= 1
+                @inbounds stk[stklen] = val
+            else 
+                @inbounds val = eval_0ord(OP[oc],stk,stklen-n+1,stklen)
                 stklen -= n-1
                 @inbounds stk[stklen] = val
             end
+            idx += 5
+
+        elseif ntype == TYPE_O1
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds stk[stklen] = eval_0ord(OP[oc],pval,stk[stklen])
+            idx += 5
+        
+        elseif ntype == TYPE_O2
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds stk[stklen] = eval_0ord(OP[oc],stk[stklen],pval)
+            idx += 5
+        
+        elseif ntype == TYPE_O3
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds vval = vvals[tt[idx+4]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],pval,vval)
+            idx += 6
+        
+        elseif ntype == TYPE_O4
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds vval = vvals[tt[idx+4]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],vval,pval)
+            idx += 6
+
+        elseif ntype == TYPE_O5
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            @inbounds stk[stklen] = eval_0ord(OP[oc],vval,stk[stklen])
+            idx += 5
+
+        elseif ntype == TYPE_O6
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            @inbounds stk[stklen] = eval_0ord(OP[oc],stk[stklen],vval)
+            idx += 5
+
+        elseif ntype == TYPE_O7
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],vval)
+            idx += 5
+
         # else 
         #     @assert false
         end
@@ -49,6 +95,5 @@ end
 
 ## Interface method
 function feval{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
-    val = forward_pass_0ord(tape,vvals,pvals)
-    return val
+    return forward_pass_0ord(tape,vvals,pvals)
 end

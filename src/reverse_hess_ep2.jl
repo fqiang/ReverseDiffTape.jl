@@ -1,7 +1,7 @@
 #edge pusing algorithm for Hessian reverse AD
 
 function reset_hess2{I,V}(tape::Tape{I,V})
-    for i =1:length(tape.bhi)
+    for i = 1:length(tape.bhi)
         @inbounds tape.bhi[i] = Vector{Int}()
         @inbounds tape.bhv[i] = Vector{Float64}()
     end
@@ -19,7 +19,7 @@ function prepare_reeval_hess2{I,V}(tape::Tape{I,V})
 end
 
 @inline function push_edge2{I,V}(tape::Tape{I,V},to::I,from::I)
-    # @show "push_edge2 - ",to," <--- ", from
+    @show "push_edge2 - ",to," <--- ", from
     @inbounds push!(tape.bhi[to],from)
     @inbounds push!(tape.bhv[to],0.0)
     if to <= tape.nvar && from > tape.nvar
@@ -39,47 +39,26 @@ function hess_struct2{I,V}(tape::Tape{I,V})
     bhi = tape.bhi
     idx = length(tt)
     trlen = length(tr)
-    assert(tape.nnode-1 == length(tr))
+    @assert tape.nnode-1 == length(tr)
     
-    while (idx > 0)
+    @inbounds while idx > 0
         @inbounds ntype = tt[idx]
-        idx -= 1
-        if(ntype == TYPE_P)
-            idx -= 3
-        elseif(ntype == TYPE_V)
-            @inbounds v_id = tt[idx]
-            # @inbounds lvi = bh[v_id]
-            # @inbounds e = length(lvi)
-            # @inbounds s = bh_v_idxes[v_id] + 1
-
-            # for i = s:e
-            #     @inbounds p_id = lvi[i].i
-            #     if p_id <= tape.nvar
-            #         if p_id < v_id 
-            #             push!(tape.h_I, v_id)
-            #             push!(tape.h_J, p_id)
-            #         else
-            #             push!(tape.h_J, v_id)
-            #             push!(tape.h_I, p_id)
-            #         end
-            #     end
-            # end
-            # @inbounds bh_v_idxes[v_id] = e
-
-            idx -= 2 #skip TYPE_V
-        elseif(ntype == TYPE_O)
-            @inbounds n = tt[idx]
-            @inbounds oc = tt[idx-1]
+        @show ntype, trlen, idx
+        if ntype == TYPE_P
+            @assert false
+        elseif ntype == TYPE_V
+            idx -= 3 
+        elseif ntype == TYPE_O
+            @inbounds n = tt[idx-1]
+            @inbounds oc = tt[idx-2]
 
             #pushing
-            @inbounds i_id = tt[idx-2]
-            idx -= 4
-            # @inbounds lvi = bh[i_id]
+            @inbounds i_id = tt[idx-3]
             @inbounds lvi = bhi[i_id]
             for j = 1:length(lvi)
                 # @inbounds p_id = lvi[j].i
                 @inbounds p_id = lvi[j]
-                if(p_id == i_id)
+                if p_id == i_id
                     for j0=trlen-n+1:trlen 
                         @inbounds ci_id = tr[j0]
                         push_edge2(tape,ci_id, ci_id)
@@ -113,7 +92,7 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                         push_edge2(tape,cii_id, ci_id)
                     end
                 end 
-            elseif (op_sym == :/) # binary operator /
+            elseif op_sym == :/ # binary operator /
                 assert(n==2)
                 @inbounds ri_id = tr[trlen]
                 @inbounds li_id = tr[trlen-1]
@@ -128,8 +107,192 @@ function hess_struct2{I,V}(tape::Tape{I,V})
                 push_edge2(tape,ri_id, ri_id)
             end
             trlen -= n
+            idx -= 5
+        elseif ntype == TYPE_O1
+            @inbounds oc = tt[idx-2]
+            #pushing 
+            @inbounds i_id = tt[idx-3]
+            @inbounds lvi = bhi[i_id]
+            @inbounds c_id = tr[trlen]
+
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape,c_id, c_id)
+                else
+                    push_edge2(tape,c_id,p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym == :/ || op_sym == :^
+                push_edge2(tape,c_id,c_id)
+            end
+            trlen -= 1
+            idx -= 5
+        elseif ntype == TYPE_O2
+            @inbounds oc = tt[idx-2]
+            #pushing 
+            @inbounds i_id = tt[idx-3]
+            @inbounds lvi = bhi[i_id]
+            @inbounds c_id = tr[trlen]
+
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape,c_id, c_id)
+                else
+                    push_edge2(tape,c_id,p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym == :^
+                push_edge2(tape,c_id,c_id)
+            end
+            trlen -= 1
+            idx -= 5
+        elseif ntype == TYPE_O3
+            @inbounds oc = tt[idx-3]
+            @inbounds i_id = tt[idx-4]
+            @inbounds vidx = tt[idx-1]
+
+            @inbounds lvi = bhi[i_id]
+            #pushing 
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape,vidx, vidx)
+                else
+                    push_edge2(tape,vidx,p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym == :/ || op_sym == :^
+                push_edge2(tape,vidx,vidx)
+            end
+            idx -= 6
+        elseif ntype == TYPE_O4
+            @inbounds oc = tt[idx-3]
+            @inbounds i_id = tt[idx-4]
+            @inbounds vidx = tt[idx-1]
+            
+            @inbounds lvi = bhi[i_id]
+            #pushing 
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape,vidx, vidx)
+                else
+                    push_edge2(tape,vidx,p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym == :^
+                push_edge2(tape,vidx,vidx)
+            end
+            idx -= 6
+        elseif ntype == TYPE_O5
+            @inbounds oc = tt[idx-2]
+            @inbounds i_id = tt[idx-3]
+            @inbounds vidx = tt[idx-1]
+
+            @inbounds lvi = bhi[i_id]
+            @inbounds c_id = tr[trlen]
+            #pusing 
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape, vidx, vidx)
+                    push_edge2(tape, c_id, vidx)
+                    push_edge2(tape, c_id, c_id)
+                else
+                    push_edge2(tape, vidx, p_id)
+                    push_edge2(tape, c_id, p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym ==:*
+                push_edge2(tape,c_id,vidx)
+            elseif op_sym ==:/
+                push_edge2(tape,c_id,vidx)
+                push_edge2(tape,c_id,c_id)
+            elseif op_sym ==:^
+                push_edge2(tape,vidx,vidx)
+                push_edge2(tape,c_id,vidx)
+                push_edge2(tape,c_id,c_id)
+            else
+                @assert op_sym == :+ || op_sym ==:-
+            end
+            trlen -= 1
+            idx -= 5
+        elseif ntype == TYPE_O6
+            @inbounds oc = tt[idx-2]
+            @inbounds i_id = tt[idx-3]
+            @inbounds vidx = tt[idx-1]
+
+            @inbounds lvi = bhi[i_id]
+            @inbounds c_id = tr[trlen]
+            #pusing 
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    push_edge2(tape, c_id, c_id)
+                    push_edge2(tape, vidx, c_id)
+                    push_edge2(tape, vidx, vidx)
+                else
+                    push_edge2(tape, c_id, p_id)
+                    push_edge2(tape, vidx, p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym ==:*
+                push_edge2(tape,vidx,c_id)
+            elseif op_sym ==:/
+                push_edge2(tape,vidx,c_id)
+                push_edge2(tape,vidx,vidx)
+            elseif op_sym ==:^
+                push_edge2(tape,c_id,c_id)
+                push_edge2(tape,vidx,c_id)
+                push_edge2(tape,vidx,vidx)
+            else
+                @assert op_sym == :+ || op_sym ==:-
+            end
+            trlen -= 1
+            idx -= 5
+
+        elseif ntype == TYPE_O7
+            @inbounds oc = tt[idx-2]
+            @inbounds i_id = tt[idx-3]
+            @inbounds vidx = tt[idx-1]
+
+            @inbounds lvi = bhi[i_id]
+            #pushing 
+            for j = 1:length(lvi)
+                @inbounds p_id = lvi[j]
+                if p_id == i_id 
+                    push_edge2(tape,vidx,vidx)
+                else
+                    push_edge2(tape,vidx,p_id)
+                end
+            end
+            #creating
+            @inbounds op_sym = OP[oc]
+            if op_sym != :-
+                push_edge2(tape,vidx,vidx)
+            end
+            idx -= 5
+        else 
+            @assert false
         end
     end #end while loop
+
+    @assert trlen == 0
+    @assert idx == 0
 
     @timing tape.enable_timing_stats tape.ep_structure += toq()
     nothing
@@ -191,65 +354,121 @@ function hess_struct2_recovery{I,V}(tape::Tape{I,V})
     nothing
 end
 
+
 function forward_pass2_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
     @timing tape.enable_timing_stats tic()
 
     tt = tape.tt
     idx = one(I)
     stk = tape.stk
+    vals = tape.vals
+    vallen = zero(I)
     stklen = zero(I)
-    imm = tape.imm
-    immlen = zero(I)
-    
-    while(idx <= length(tt))
-        # @show idx
-        # println("++++++++++++++++++++++++++++++++++++")
-        @inbounds ntype = tt[idx]
-        # eset[idx] = Dict{I,V}() #initialize edge set
-        idx += 1
-        if(ntype == TYPE_P)
-            idx += 1 #skip ID
+
+   @inbounds while(idx <= length(tt))
+        ntype = tt[idx]
+        # @show ntype
+        if ntype == TYPE_P
+            @assert false
+        
+        elseif ntype == TYPE_V
             stklen += 1
-            @inbounds stk[stklen] = pvals[tt[idx]]
-            idx += 2 #skip TYPE_P
-        elseif(ntype == TYPE_V)
-            stklen += 1
-            @inbounds stk[stklen] = vvals[tt[idx]]
-            idx += 2 #skip TYPE_V
-        elseif(ntype == TYPE_O)
-            idx += 1 #skip ID
-            @inbounds oc = tt[idx]
-            idx += 1
-            @inbounds n = tt[idx]
-            idx += 2 #skip TYPE_O
-            # @show OP[oc], stklen-n+1, n
-            # @show stk
-            counter = zero(I)
-            if(n==1)
-                @inbounds (counter,stk[stklen]) = eval_2ord(OP[oc],stk[stklen],imm,immlen+1)
-            else
-                @inbounds (counter,val) = eval_2ord(OP[oc],stk,stklen-n+1,stklen,imm,immlen+1)
+            @inbounds stk[stklen] = vvals[tt[idx+1]]
+            idx += 3
+
+        elseif ntype == TYPE_O
+            @inbounds oc = tt[idx+2]
+            @inbounds n = tt[idx+3]
+
+            if n == 1 # 1-argument functions
+                @inbounds val = eval_0ord(OP[oc],stk[stklen])
+                vallen += 1
+                @inbounds vals[vallen] = stk[stklen]
+                @inbounds stk[stklen] = val
+            elseif n == 2
+                # @show OP[oc],stk
+                @inbounds val = eval_0ord(OP[oc],stk[stklen-1],stk[stklen]) 
+                @inbounds vals[vallen+1] = stk[stklen-1]
+                @inbounds vals[vallen+2] = stk[stklen]
+                vallen += 2
+                stklen -= 1
+                @inbounds stk[stklen] = val
+            else 
+                @inbounds val = eval_0ord(OP[oc],stk,stklen-n+1,stklen)
+                @simd for i=1:n
+                    @inbounds vals[vallen+i] = stk[stklen-n+i]
+                end
+                vallen += n
                 stklen -= n-1
                 @inbounds stk[stklen] = val
             end
-            immlen += counter
-            # @show imm     
-            # @show stk[stklen] 
+            idx += 5
+
+        elseif ntype == TYPE_O1
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds val = eval_0ord(OP[oc],pval,stk[stklen])
+            vallen += 1
+            vals[vallen] = stk[stklen]
+            @inbounds stk[stklen] = val
+            idx += 5
+        
+        elseif ntype == TYPE_O2
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds val = eval_0ord(OP[oc],stk[stklen],pval)
+            vallen += 1
+            vals[vallen] = stk[stklen]
+            @inbounds stk[stklen] = val
+            idx += 5
+        
+        elseif ntype == TYPE_O3
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds vval = vvals[tt[idx+4]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],pval,vval)
+            idx += 6
+        
+        elseif ntype == TYPE_O4
+            @inbounds oc = tt[idx+2]
+            @inbounds pval = pvals[tt[idx+3]]
+            @inbounds vval = vvals[tt[idx+4]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],vval,pval)
+            idx += 6
+
+        elseif ntype == TYPE_O5
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            @inbounds val = eval_0ord(OP[oc],vval,stk[stklen])
+            vallen += 1
+            @inbounds vals[vallen] = stk[stklen]
+            @inbounds stk[stklen] = val
+            idx += 5
+
+        elseif ntype == TYPE_O6
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            @inbounds val = eval_0ord(OP[oc],stk[stklen],vval)
+            vallen += 1
+            @inbounds vals[vallen] = stk[stklen]
+            @inbounds stk[stklen] = val
+            idx += 5
+
+        elseif ntype == TYPE_O7
+            @inbounds oc = tt[idx+2]
+            @inbounds vval = vvals[tt[idx+3]]
+            stklen += 1
+            @inbounds stk[stklen] = eval_0ord(OP[oc],vval)
+            idx += 5
+
         # else 
         #     @assert false
         end
-        # @show stklen
-        # println("++++++++++++++++++++++++++++++++++++")
     end
-    # @show tape.imm2ord,immlen
-    # assert(tape.imm2ord>=immlen)
-    tape.imm2ordlen = immlen
-    # @show stklen
-    if length(tape.imm) < immlen
-        resize!(tape.imm,immlen) #if not resize memory will be hold in julia , and not claimed by gc
-        # @show "ep - imm length $immlen"
-    end
-
+    @assert stklen == 1 && vallen + 1 == tape.nnode == length(vals)
+    vals[vallen + 1] = stk[stklen]
     @timing tape.enable_timing_stats tape.ep_forward_time += toq()
 
     return @inbounds stk[1]
@@ -274,14 +493,10 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V})
     bh_idxes = tape.bh_idxes
     idx = length(tt)
     trlen = length(tr)
-    imm = tape.imm
-    immlen = tape.imm2ordlen
-    nnz = zero(I)
-    # assert(length(imm) == immlen)  
 
     adjs = tape.stk
     adjlen = 1
-    @inbounds adjs[1] = one(V)  #initialize adjoint = 1
+    @inbounds adjs[adjlen] = one(V)  #initialize adjoint = 1
 
     while(idx > 0)
         # println("++++++++++++++++++++++++++++++++++++")
@@ -291,35 +506,77 @@ function reverse_pass2_2ord{I,V}(tape::Tape{I,V})
         @timing tape.enable_timing_stats node_id = 0  #timing
 
         @inbounds ntype = tt[idx]
-        idx -= 1
-        
-        #adjoints
         @inbounds adj = adjs[adjlen]
-        adjlen -= 1
-        # @show adj
-
+        
         if ntype == TYPE_P
-            @timing tape.enable_timing_stats node_id = tt[idx-1]  #timing
-            idx -= 3
+            @assert false
         elseif ntype == TYPE_V
-            @inbounds v_id = tt[idx]
-
-            # @inbounds lvi = bh[v_id]
-            # @inbounds e = bh_idxes[v_id]
-            # @inbounds s = bh_v_idxes[v_id] + 1
-
-            # for i = s:e
-            #     @inbounds p = lvi[i]
-            #     if p.i <= tape.nvar
-            #         nnz += 1
-            #         @inbounds tape.hess[nnz] = p.w
-            #     end
-            # end
-            # @inbounds bh_v_idxes[v_id] = e
-
-            idx -= 2 #skip TYPE_V
-            @timing tape.enable_timing_stats node_id = v_id  #timing
+            @timing tape.enable_timing_stats node_id = tt[idx-1]  #timing
+            idx -= 3 #skip TYPE_V
+            
         elseif ntype == TYPE_O 
+            @inbounds n = tt[idx-1]
+            @inbounds oc = tt[idx-2]
+
+            #pushing
+            @inbounds i_id = tt[idx-3]
+            @inbounds lvi = bhi[i_id]
+            for j = 1:length(lvi)
+                # @inbounds p_id = lvi[j].i
+                @inbounds p_id = lvi[j]
+                if p_id == i_id
+                    for j0=trlen-n+1:trlen 
+                        @inbounds ci_id = tr[j0]
+                        push_edge2(tape,ci_id, ci_id)
+                        for j1=j0+1:trlen
+                            @inbounds cii_id = tr[j1]
+                            push_edge2(tape,cii_id, ci_id)
+                        end
+                    end
+                else  #when i_id != p_id
+                    for j0 = trlen -n + 1:trlen
+                        @inbounds ci_id = tr[j0]
+                        push_edge2(tape,ci_id, p_id)
+                    end
+                end
+            end
+           
+            #creating 
+            @inbounds op_sym = OP[oc]
+            # @show op_sym
+            if (op_sym ==:+ || op_sym == :-)
+                #zeros
+            elseif (n == 1 && op_sym != :-) #1-ary operator
+                @inbounds ci_id = tr[trlen]
+                push_edge2(tape,ci_id, ci_id)
+            elseif (op_sym == :*)
+                # @show "times ", n
+                for j0 = trlen -n + 1:trlen
+                    @inbounds ci_id = tr[j0]
+                    for j1=j0+1:trlen
+                        @inbounds cii_id = tr[j1]
+                        push_edge2(tape,cii_id, ci_id)
+                    end
+                end 
+            elseif op_sym == :/ # binary operator /
+                assert(n==2)
+                @inbounds ri_id = tr[trlen]
+                @inbounds li_id = tr[trlen-1]
+                push_edge2(tape,ri_id,li_id)
+                push_edge2(tape,ri_id,ri_id)
+            else # other binary
+                assert(n==2)
+                @inbounds ri_id = tr[trlen]
+                @inbounds li_id = tr[trlen-1]
+                push_edge2(tape,li_id, li_id)
+                push_edge2(tape,ri_id, li_id)
+                push_edge2(tape,ri_id, ri_id)
+            end
+            trlen -= n
+            idx -= 5
+
+
+
             @inbounds n = tt[idx]
             @inbounds oc = tt[idx-1]
             @inbounds op_sym = OP[oc]

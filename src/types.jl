@@ -8,13 +8,25 @@ macro timing(cond,code)
 end
 
 #the AD types below
+const TYPE_P = 0   #param node
 const TYPE_V = 1    #variable node
-const TYPE_P = 2    #param node
-const TYPE_O = 3
+const TYPE_O = 2
+const TYPE_O1 = 3  
+const TYPE_O2 = 4  
+const TYPE_O3 = 5
+const TYPE_O4 = 6
+const TYPE_O5 = 7
+const TYPE_O6 = 8
+const TYPE_O7 = 9
 
 type Tape{I,V}
     tt::Vector{I}
-    stk::Vector{V}
+    tr::Vector{I}
+    nvar::I
+    nvnode::I
+    nnode::I
+    maxoperands::I
+    depth::I
 
     g_I::Vector{I}
     g::Vector{V}
@@ -32,17 +44,10 @@ type Tape{I,V}
     bh_idxes::Vector{I}   #current horizontal indicies
     bh::Vector{Dict{I,V}}
     
+    stk::Vector{V}
+    vals::Vector{V}
+    adjs::Vector{V}
     imm::Vector{V}
-    imm1ordlen::I
-    imm2ordlen::I
-
-    tr::Vector{I}
-
-    nvar::I
-    nvnode::I
-    nnode::I
-    maxoperands::I
-    fstkmax::I
 
     # timing stat
     enable_timing_stats::Bool
@@ -55,10 +60,11 @@ type Tape{I,V}
     ep_n::I
 
 
-    function Tape(;imm=Vector{V}(), tt=Vector{I}(), with_timing=false, bh_type=1)
+    function Tape(;tt=Vector{I}(), with_timing=false, bh_type=1)
         tape = new(
             tt,  #tt
-            Vector{V}(),  #stack - used for adjoints in reverse sweep
+            Vector{I}(), #reverse order level trace, tr vector
+            zero(I),zero(I),zero(I),zero(I),zero(I),
             
             Vector{I}(),  #grad_I
             Vector{V}(),  #grad value
@@ -75,16 +81,12 @@ type Tape{I,V}
             Vector{I}(),    #current horizontal indicies
             Vector{Dict{I,V}}(),
             
+            Vector{V}(), 
+            Vector{V}(),
+            Vector{V}(),
+            Vector{V}(),
             
-            imm, #imm , using for both 1st and 2nd order
-            zero(I),     #1st order length
-            zero(I),     #2nd order length
-            
-            Vector{I}(), #reverse order level trace, tr vector
-           
-            zero(I),zero(I),zero(I),zero(I),zero(I)
-
-            ,with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
+            with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
         finalizer(tape, tape_cleanup)
         return tape
@@ -151,97 +153,152 @@ end
 
 function tape_analysize{I,V}(tape::Tape{I,V})
     tt = tape.tt
+    tr = tape.tr
     idx = one(I)
-    istk = Vector{I}()
-    v_idx_max = zero(I)
-    immlen_2nd = zero(I)  # for sure >= 2ord 1ord
-   	immlen_1st = zero(I)
-    
-    pnode_num = 0
-    tnode_num = 0
-    onode_num = 0
-    vnode_num = 0
+    mxn = one(I)
+    vmax = zero(I)
+    vnodes = zero(I)
+    nnodes = zero(I)
+    n = [0,0,0,0,0,0,0,0,0]
+
     @inbounds while idx <= length(tt)
         @inbounds ntype = tt[idx]
-        idx += 1
+        # @show ntype
+        nnodes += 1
         if ntype == TYPE_P
-            pnode_num += 1
+            @assert false
+        elseif ntype == TYPE_V
+            n[TYPE_V] += 1
+            vmax = max(vmax, tt[idx+1])
+            vnodes += 1
             idx += 3
         elseif ntype == TYPE_O
-            onode_num += 1
-            idx += 4
-        elseif ntype == TYPE_V
-            vnode_num += 1
-            v_idx_max = max(v_idx_max,tt[idx])
-            idx += 2
+            n[TYPE_O] +=1
+            mxn = max(mxn,tt[idx+3])
+            idx += 5
+        elseif ntype == TYPE_O1
+            n[TYPE_O1] += 1
+            idx += 5
+        elseif ntype == TYPE_O2
+            n[TYPE_O2] += 1
+            idx += 5 
+        elseif ntype == TYPE_O3
+            n[TYPE_O3] += 1
+            vmax = max(vmax,tt[idx+4])
+            vnodes += 1
+            idx += 6
+
+        elseif ntype == TYPE_O4
+            n[TYPE_O4] += 1
+            vmax = max(vmax,tt[idx+4])
+            vnodes += 1
+            idx += 6
+
+        elseif ntype == TYPE_O5
+            n[TYPE_O5] += 1
+            vmax = max(vmax,tt[idx+3])
+            vnodes += 1
+            idx += 5            
+
+        elseif ntype == TYPE_O6
+            n[TYPE_O6] += 1
+            vmax = max(vmax,tt[idx+3])
+            vnodes += 1
+            idx += 5
+        elseif ntype == TYPE_O7
+            n[TYPE_O7] += 1
+            vmax = max(vmax,tt[idx+3])
+            vnodes += 1
+            idx += 5
         else
             @assert false
         end
-        tnode_num += 1
+        # @show vmax
     end
-    @assert idx == length(tt) + 1
-    # @show vnode_num, pnode_num, onode_num, tnode_num
-    @assert vnode_num + pnode_num + onode_num == tnode_num
-    tape.nvnode = vnode_num
-    tape.nvar = v_idx_max
-    tape.nnode = tnode_num
-    bhlen = pnode_num + onode_num + v_idx_max
-
-    #updating ID
-    node_id = tape.nvar+1
-    idx = one(I)
-    @inbounds while(idx <= length(tt))
-        # @show idx
-        @inbounds ntype = tt[idx]
-        idx += 1
-        
-        if(ntype == TYPE_P)
-            @assert tt[idx] == -1
-            tt[idx] = node_id 
-            node_id += 1
-            push!(istk, tt[idx])
-            idx += 3 #skip TYPE_P
-            # @show "TYPE_P:", pnum, node_idx
-        elseif(ntype == TYPE_V)
-            push!(istk, tt[idx])
-            idx += 2 #skip TYPE_V
-        elseif(ntype == TYPE_O)
-            @assert tt[idx] == -1
-            tt[idx] = node_id 
-            node_id += 1
-            idx += 1  #skip id
-            @inbounds op_sym = OP[tt[idx]]
-            idx += 1  #skip oc
-            @inbounds n = tt[idx]
-            idx += 2  #skip TYPE_O
-			if n==1
-				immlen_2nd += 2 
-			else
-				if op_sym==:*
-            		immlen_2nd += div(n*(n+1),2)  #max estimation
-				elseif op_sym == :+ || op_sym ==:-	
-					immlen_2nd += 0
-				else
-					immlen_2nd += 5
-				end
-			end
-			immlen_1st += n			
-
-            tape.maxoperands = max(n,tape.maxoperands)
-            
-            tape.fstkmax = max(tape.fstkmax,length(istk))
-            t = Vector{I}() #slow but works
-            for i = 1:n
-                cid = pop!(istk)
-                push!(t,cid)
-            end
-            append!(tape.tr, reverse!(t))
-            push!(istk,tt[idx - 4])
-        else
-            @assert false
-        end
-    end
+    tape.maxoperands = mxn
+    tape.nvar = vmax
+    tape.nvnode = vnodes
+    tape.nnode = nnodes
     
+    @assert idx == length(tt) + 1
+    # @show n
+    
+    #updating ID
+    nid = vmax
+    idx = one(I)
+    istk = Vector{I}()
+    @inbounds while(idx <= length(tt))
+        @inbounds ntype = tt[idx]
+        # @show istk
+        # @show ntype
+        if ntype == TYPE_P
+            @assert false
+
+        elseif ntype == TYPE_V
+            push!(istk, tt[idx+1])
+            idx += 3
+
+        elseif ntype == TYPE_O
+            nid += 1
+            tt[idx+1] = nid
+            num = tt[idx+3]
+            istklen = length(istk)
+            append!(tape.tr,slice(istk,istklen-num+1:istklen))
+            resize!(istk,istklen-num)
+            push!(istk, nid)
+            idx += 5
+
+        elseif ntype == TYPE_O1
+            nid += 1
+            tt[idx+1] = nid
+            push!(tape.tr,pop!(istk))
+            push!(istk,nid)
+            idx += 5
+
+        elseif ntype == TYPE_O2
+            nid += 1
+            tt[idx+1] = nid
+            push!(tape.tr,pop!(istk))
+            push!(istk,nid)
+            idx += 5
+
+        elseif ntype == TYPE_O3
+            nid += 1
+            tt[idx+1] = nid
+            push!(istk,nid)
+            idx += 6
+
+        elseif ntype == TYPE_O4
+            nid += 1
+            tt[idx+1] = nid
+            push!(istk,nid)
+            idx += 6
+
+        elseif ntype == TYPE_O5
+            nid += 1
+            tt[idx+1] = nid
+            push!(tape.tr,pop!(istk))
+            push!(istk,nid)
+            idx += 5            
+
+        elseif ntype == TYPE_O6
+            nid += 1
+            tt[idx+1] = nid
+            push!(tape.tr,pop!(istk))
+            push!(istk,nid)
+            idx += 5
+
+        elseif ntype == TYPE_O7
+            nid += 1
+            tt[idx+1] = nid
+            push!(istk,nid)
+            idx += 5
+        else
+            @assert false
+        end
+    end
+
+    bhlen = nid
     # bh
     # @show tape.bh_type
     if tape.bh_type == 1
@@ -264,21 +321,312 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     #timing vector for ep reverse
     @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
 
-    # init
-	immlen = max(immlen_1st,immlen_2nd)
-    if length(tape.imm) < immlen
-        resize!(tape.imm, immlen)
-        @show "imm size $immlen"
-    end
     resize!(tape.g_I, tape.nvnode)
     resize!(tape.g, tape.nvnode)
-    resize!(tape.stk, tape.nnode) 
+    resize!(tape.vals, tape.nnode)
+    resize!(tape.stk, tape.depth + tape.maxoperands) 
+    resize!(tape.imm, convert(I,(tape.maxoperands+1)*tape.maxoperands/2 + tape.maxoperands))
+    @show length(tape.stk), length(tape.adjs), length(tape.imm)
     
     # verification
-    assert(length(tape.tr) == tape.nnode-1)  #root node is not on tr
+    @assert length(tape.tr) == tape.nnode-1  #root node is not on tr
 end
 
 
+
+##########################################################################################
+#
+# tape builder from a Julia Expr type
+#   tape memory property is initialized 
+#
+##########################################################################################
+
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
+    @assert length(tape.tt)==0
+    tape_builder(expr,tape, pvals)
+    tape_analysize(tape)
+end
+
+type B_NODE{I,V}
+    t::I
+    vidx::I
+    pval::V
+end
+
+function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
+    # @show expr
+    # @show d
+    tt = tape.tt
+    d += 1
+    tape.depth = max(tape.depth,d)
+
+    if isa(expr, Real)
+        return B_NODE(0,0,expr)
+    elseif isa(expr, Expr) && expr.head == :ref  #a JuMP variable
+        @assert length(expr.args) == 2
+        vidx = expr.args[2]
+        return B_NODE(1,vidx,0.0)
+    elseif isa(expr, Expr) && expr.head == :call
+        op = expr.args[1]
+        n = length(expr.args)-1
+        @assert typeof(op)==Symbol
+        if (n==1 || n==0) && op==:+ 
+            #simpliy the expression eliminate 1-ary + node
+            return tape_builder(expr.args[2],tape,pvals,d)
+        elseif op == :- && n==1
+            node = tape_builder(expr.args[2],tape,pvals,d)
+
+            if node.t == 0
+                return B_NODE(0,0,-node.pval)
+            elseif node.t == 1
+                push!(tt,TYPE_O7)
+                push!(tt,-1)
+                push!(tt.S_TO_OC[op])
+                push!(tt,node.vidx)
+                push!(tt,TYPE_O7)
+                return B_NODE(9,0,0.0)
+            elseif node.t == 2 || node.t == 3 || node.t == 4 || node.t==5 || node.t == 6 || node.t == 7 || node.t == 8 || node.t == 9
+                push!(tt, TYPE_O)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,n)
+                push!(tt,TYPE_O)
+                return B_NODE(2,0,0.0)
+            else
+                @assert false
+            end
+        elseif n == 1
+            node = tape_builder(expr.args[2],tape,pvals,d)
+            if node.t == 0
+                pval = eval(op)(node.pval)
+                return B_NODE(0,0,pval)
+            elseif node.t == 1
+                push!(tt, TYPE_O7)
+                push!(tt, -1)
+                push!(tt, S_TO_OC[op])
+                push!(tt, node.vidx)
+                push!(tt, TYPE_O7)
+                return B_NODE(9,0,0.0)
+            elseif node.t == 2 || node.t == 3 || node.t == 4 || node.t==5 || node.t == 6 || node.t == 7 || node.t == 8 || node.t == 9
+                push!(tt, TYPE_O)
+                push!(tt, -1)
+                push!(tt, S_TO_OC[op])
+                push!(tt, n)
+                push!(tt, TYPE_O)
+                return B_NODE(2,0,0.0)
+            else 
+                @assert false
+            end
+        elseif n == 2
+            ln = tape_builder(expr.args[2],tape,pvals,d)
+            rn = tape_builder(expr.args[3],tape,pvals,d)
+            if ln.t == rn.t == 0
+                pval = eval(op)(ln.pval,rn.pval)
+                return B_NODE(0,0,pval)
+            elseif ln.t == 0 && rn.t != 1
+                push!(pvals, ln.pval)
+
+                push!(tt,TYPE_O1)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,length(pvals))
+                push!(tt,TYPE_O1)
+                return B_NODE(3,0,0.0)
+            elseif ln.t == 0 && rn.t == 1
+                push!(pvals, ln.pval)
+
+                push!(tt,TYPE_O3)
+                push!(tt, -1)
+                push!(tt, S_TO_OC[op])
+                push!(tt, length(pvals))
+                push!(tt, rn.vidx)
+                push!(tt, TYPE_O3)
+                return B_NODE(5,0,0.0)
+            elseif rn.t == 0 && ln.t != 1
+                push!(pvals, rn.pval)
+
+                push!(tt,TYPE_O2)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,length(pvals))
+                push!(tt,TYPE_O2)
+                return B_NODE(4,0,0.0)
+            elseif rn.t == 0 && ln.t == 1
+                push!(pvals,rn.pval)
+
+                push!(tt, TYPE_O4)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,length(pvals))
+                push!(tt,ln.vidx)
+                push!(tt,TYPE_O4)
+                return B_NODE(6,0,0.0)
+            elseif ln.t == 1 && rn.t == 1
+                push!(tt,TYPE_V)
+                push!(tt,ln.vidx)
+                push!(tt,TYPE_V)
+
+                push!(tt,TYPE_V)
+                push!(tt,rn.vidx)
+                push!(tt,TYPE_V)
+
+                push!(tt,TYPE_O)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,n)
+                push!(tt,TYPE_O)
+                return B_NODE(2,0,0.0)
+            elseif ln.t == 1 && rn.t != 1
+                push!(tt,TYPE_O5)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,ln.vidx)
+                push!(tt,TYPE_O5)
+                return B_NODE(7,0,0.0)
+            elseif rn.t == 1 && ln.t != 1
+                push!(tt,TYPE_O6)
+                push!(tt, -1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,rn.vidx)
+                push!(tt,TYPE_O6)
+                return B_NODE(8,0,0.0)
+            else
+                push!(tt,TYPE_O)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,n)
+                push!(tt,TYPE_O)
+                return B_NODE(2,0,0.0)
+            end
+        else #n>2
+            @assert op == :* || op == :+ && n>2
+            rstk = Vector{B_NODE}()
+            pval = zero(V)
+            pnode = zero(I)
+            for i in 2:length(expr.args)
+                node = tape_builder(expr.args[i],tape,pvals,d)
+                if node.t == 0 
+                    pnode==zero(I)? pval = node.pval : ( op == :+? pval += node.pval : pval *= node.pval )
+                    pnode += 1
+                elseif node.t == 1
+                    push!(rstk,node)
+                else
+                    #nothing
+                end
+            end
+
+            if pnode == n
+                return B_NODE(0,0,pval)
+            elseif n-length(rstk)-pnode == 0 && length(rstk) == 1
+                @assert pnode > 0
+                push!(pvals, pval)
+
+                push!(tt, TYPE_O3)
+                push!(tt,-1)
+                push!(tt, S_TO_OC[op])
+                push!(tt, length(pvals))
+                push!(tt, rstk[1].vidx)
+                push!(tt, TYPE_O3)
+                return B_NODE(5,0,0)
+            elseif n-length(rstk)-pnode != 0 && length(rstk) == 1
+                if n - length(rstk) - pnode > 1
+                    push!(tt,TYPE_O)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,n-length(rstk)-pnode)
+                    push!(tt,TYPE_O)
+
+                    push!(tt,TYPE_O5)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,rstk[1].vidx)
+                    push!(tt,TYPE_O5)
+
+                    if pnode == 0
+                        return B_NODE(7,0,0.0)
+                    else
+                        push!(pvals, pval)
+                        push!(tt,TYPE_O1)
+                        push!(tt,-1)
+                        push!(tt,S_TO_OC[op])
+                        push!(tt,length(pvals))
+                        push!(tt,TYPE_O1)
+                        return B_NODE(3,0,0.0)
+                    end
+                else
+                    @assert n-length(rstk)-pnode ==1
+                    push!(tt,TYPE_O5)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,rstk[1].vidx)
+                    push!(tt,TYPE_O5)
+
+                    if pnode == 0
+                        return B_NODE(7,0,0.0)
+                    else
+                        push!(pvals, pval)
+                        push!(tt,TYPE_O1)
+                        push!(tt,-1)
+                        push!(tt,S_TO_OC[op])
+                        push!(tt,length(pvals))
+                        push!(tt,TYPE_O1)
+                        return B_NODE(3,0,0.0)
+                    end
+                end
+            else
+                @assert length(rstk) == 0 || length(rstk)>1
+                # @show expr, length(rstk), pnode, n
+                @assert n - pnode >= 2
+                for item in rstk
+                    push!(tt, TYPE_V)
+                    push!(tt, item.vidx)
+                    push!(tt, TYPE_V)
+                end
+
+                push!(tt,TYPE_O)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,n-pnode)
+                push!(tt,TYPE_O)
+
+                if pnode == 0
+                    return B_NODE(2,0,0.0)
+                else
+                    push!(pvals, pval)
+                    push!(tt,TYPE_O1)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,length(pvals))
+                    push!(tt,TYPE_O1)
+                    return B_NODE(3,0,0.0)
+                end
+            end
+        end
+    else
+        @show "error !"
+        dump(expr)
+        assert(false)
+    end
+    d -= 1
+    nothing
+end
+
+##########################################################################################
+#
+# tape builder from types
+#
+##########################################################################################
+function tapeBuilder{I}(data::Array{I,1}, t::I=1)
+    tape = Tape{I,Float64}(tt=data, bh_type=t)
+    tape_analysize(tape)
+    return tape
+end
+
+##########################################################################################
+#
+# operator overload interface
+#
+##########################################################################################
 immutable AD{I}
     data::Vector{I}
 end
@@ -349,101 +697,7 @@ function Base.show(io::IO,m::AD)
 end
 
 
-##########################################################################################
-#
-# tape builder from a Julia Expr type
-#   tape memory property is initialized 
-#
-##########################################################################################
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
-    assert(length(tape.tt)==0)
-    istk = Vector{I}()
-    tape_builder(expr,tape, pvals, istk)
-    @assert length(istk) == 1
-    tape_analysize(tape)
-end
-
-function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V},istk::Vector{I})
-    tt = tape.tt
-    if isa(expr, Real)
-        push!(tt,TYPE_P)
-        push!(tt,-1)
-        push!(tt,length(pvals)+1)
-        push!(tt,TYPE_P)
-
-        push!(istk,length(tt)-3)
-        push!(pvals,expr)
-    elseif isa(expr, Expr) && expr.head == :ref  #a JuMP variable
-        # @show "TYPE_V", expr, tape.nextid
-        assert(length(expr.args) == 2)
-        vidx = expr.args[2]
-        push!(tt,TYPE_V)
-        push!(tt,vidx)
-        push!(tt,TYPE_V)
-        push!(istk,length(tt)-2)
-    elseif isa(expr, Expr) && expr.head == :call
-        # @show expr.args[2]
-        # @show "TYPE_O", expr, tape.nextid
-        op = expr.args[1]
-        n = length(expr.args)-1
-        assert(typeof(op)==Symbol)
-        if(op==:+ && n==1) 
-            #simpliy the expression eliminate 1-ary + node
-            tape_builder(expr.args[2],tape,pvals,istk)
-        elseif (op == :+ && n==0)
-            #adding 0.0 to tape
-            tape_builder(0.0,tape,pvals,istk)
-        elseif (op == :- && n==1)
-            tape_builder(expr.args[2],tape,pvals,istk)
-
-            push!(tt,TYPE_O)
-            push!(tt,-1)
-            push!(tt,S_TO_OC[op])
-            push!(tt,n)
-            push!(tt,TYPE_O)
-            
-            tape.fstkmax = max(tape.fstkmax,length(istk))
-            cidx = pop!(istk)
-            push!(istk,length(tt)-4)
-            # @show length(tt)
-        else
-            for i in 2:length(expr.args)
-                tape_builder(expr.args[i],tape,pvals,istk)
-            end
-            push!(tt,TYPE_O)
-            push!(tt,-1)
-            push!(tt,S_TO_OC[op])
-            push!(tt,n)
-            push!(tt,TYPE_O)
-
-            tape.fstkmax = max(tape.fstkmax,length(istk))
-            # t = Vector{I}()
-            for i=1:n
-                cidx = pop!(istk)
-                # push!(t,cidx)
-            end
-            # append!(tape.tr,reverse!(t))
-            push!(istk,length(tt)-4)
-        end
-    else
-        @show "error !"
-        dump(expr)
-        assert(false)
-    end
-    nothing
-end
-
-##########################################################################################
-#
-# tape builder from types
-#
-##########################################################################################
-function tapeBuilder{I}(data::Array{I,1}, t::I=1)
-    tape = Tape{I,Float64}(tt=data, bh_type=t)
-    tape_analysize(tape)
-    return tape
-end
 
 ##########################################################################################
 function tape_report_mem(tape)
