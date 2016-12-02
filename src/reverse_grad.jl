@@ -54,7 +54,7 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
             @inbounds pval = pvals[tt[idx+3]]
             @inbounds val = eval_0ord(OP[oc],pval,stk[stklen])
             vallen += 1
-            vals[vallen] = stk[stklen]
+            @inbounds vals[vallen] = stk[stklen]
             @inbounds stk[stklen] = val
             idx += 5
         
@@ -63,7 +63,7 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
             @inbounds pval = pvals[tt[idx+3]]
             @inbounds val = eval_0ord(OP[oc],stk[stklen],pval)
             vallen += 1
-            vals[vallen] = stk[stklen]
+            @inbounds vals[vallen] = stk[stklen]
             @inbounds stk[stklen] = val
             idx += 5
         
@@ -113,8 +113,8 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
         end
     end
     @assert stklen == 1 && vallen + 1 == tape.nnode == length(vals)
-    vals[vallen + 1] = stk[stklen]
-    return @inbounds stk[1]
+    @inbounds ret = vals[vallen + 1] = stk[stklen]
+    return ret
 end
 
 function reverse_pass_1ord{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{V})  #repeated indicies
@@ -165,8 +165,16 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{
             else
                 @inbounds eval_1ord(OP[oc],vals,vallen-n+1,vallen,imm)
                 vallen -= n
-                @simd for i=1:n
-                    @inbounds adjs[adjlen+i-1] = imm[i]*adj
+                @inbounds op_sym = OP[oc]
+                if op_sym == :+
+                    @simd for i=1:n
+                        @inbounds adjs[adjlen+i-1] = adj
+                    end
+                else
+                    @assert op_sym == :*
+                    @simd for i=1:n
+                        @inbounds adjs[adjlen+i-1] = imm[i]*adj
+                    end
                 end
                 adjlen += n-1
             end
@@ -241,9 +249,10 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{
             @assert false
         end
     end
+    @assert idx == 0 
     @assert adjlen == 0
     @assert vallen == 0
-    @assert idx == 0
+    
     nothing
 end
 

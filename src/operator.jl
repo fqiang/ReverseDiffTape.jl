@@ -2,7 +2,6 @@
 import Lazy
 using Base.Meta
 using Calculus
-using NaNMath; nm=NaNMath
 
 #Operator overloading function for AD types
 const B_OP_START = 1
@@ -218,13 +217,14 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
     if s==:^
         exponent::V = r
         base::V = l
+        t0 = l<0.0?0.0:log(l)
         t = l^r
         if exponent == 2.0
             @inbounds imm[1] = 2.0*l
-            @inbounds imm[2] = t*log(l) #not sure if this is way to handle log(-negative)
+            @inbounds imm[2] = t*t0 
         else
             @inbounds imm[1] = r*l^(r-1.0)
-            @inbounds imm[2] = t*log(l)
+            @inbounds imm[2] = t*t0
         end
     else
         $switchexpr
@@ -234,7 +234,7 @@ end
 
 @eval @inline function eval_1ord{I,V}(s::Symbol, v::Vector{V},i::I,e::I,imm::Vector{V})
     if s==:+
-        @inbounds imm[1:(e-i)+1] = one(V)
+        # @inbounds imm[1:(e-i)+1] = one(V)
     else
         imm_i = zero(I)
         @simd for j0=i:e
@@ -311,7 +311,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
         base = l
         if exponent == 2.0
             t = base*base
-            t2 = log(base)
+            t2 = base<0.0?0.0:log(base)
             @inbounds imm[1] = 2.0*base
             @inbounds imm[2] = t*t2
             @inbounds imm[3] = 2.0
@@ -319,7 +319,7 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
             @inbounds imm[5] = t*t2*t2
         else
             t = base^exponent
-            t2 = log(base)
+            t2 = base<0.0?0.0:log(base)
             t3 = base^(exponent-1.0)
             @inbounds imm[1] = exponent*base^t3
             @inbounds imm[2] = t*t2
@@ -335,7 +335,7 @@ end
 
 @eval @inline function eval_2ord{I,V}(s::Symbol,v::Vector{V},i::I,e::I,imm::Vector{V})
     if s==:+
-        @inbounds imm[1:(e-i)+1] = one(V)
+        # @inbounds imm[1:(e-i)+1] = one(V)
     else
         #first order    
         imm_i = zero(I)

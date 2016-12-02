@@ -7,6 +7,14 @@ macro timing(cond,code)
     end
 end
 
+macro asserting(cond, code)
+    return quote
+        if $(esc(cond))
+            @assert $(esc(code))
+        end
+    end
+end
+
 #the AD types below
 const TYPE_P = 0   #param node
 const TYPE_V = 1    #variable node
@@ -46,10 +54,10 @@ type Tape{I,V}
     
     stk::Vector{V}
     vals::Vector{V}
-    adjs::Vector{V}
     imm::Vector{V}
 
     # timing stat
+    debug::Bool
     enable_timing_stats::Bool
     ep_reverse_times::Vector{V}
     ep_forward_time::V
@@ -60,7 +68,7 @@ type Tape{I,V}
     ep_n::I
 
 
-    function Tape(;tt=Vector{I}(), with_timing=false, bh_type=1)
+    function Tape(;tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=true)
         tape = new(
             tt,  #tt
             Vector{I}(), #reverse order level trace, tr vector
@@ -84,9 +92,8 @@ type Tape{I,V}
             Vector{V}(), 
             Vector{V}(),
             Vector{V}(),
-            Vector{V}(),
             
-            with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
+            with_debug, with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
         finalizer(tape, tape_cleanup)
         return tape
@@ -156,6 +163,7 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     tr = tape.tr
     idx = one(I)
     mxn = one(I)
+    mxn_times = one(I)
     vmax = zero(I)
     vnodes = zero(I)
     nnodes = zero(I)
@@ -175,6 +183,9 @@ function tape_analysize{I,V}(tape::Tape{I,V})
         elseif ntype == TYPE_O
             n[TYPE_O] +=1
             mxn = max(mxn,tt[idx+3])
+            if OP[tt[idx+2]]==:* 
+                mxn_times = max(mxn_times,tt[idx+3])
+            end
             idx += 5
         elseif ntype == TYPE_O1
             n[TYPE_O1] += 1
@@ -325,8 +336,9 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     resize!(tape.g, tape.nvnode)
     resize!(tape.vals, tape.nnode)
     resize!(tape.stk, tape.depth + tape.maxoperands) 
-    resize!(tape.imm, convert(I,(tape.maxoperands+1)*tape.maxoperands/2 + tape.maxoperands))
-    @show length(tape.stk), length(tape.adjs), length(tape.imm)
+    immlen = convert(I,(mxn_times-1)*mxn_times/2)
+    resize!(tape.imm, immlen <=5?5:immlen)
+    @show mxn_times, tape.maxoperands, length(tape.vals), length(tape.stk), length(tape.imm)
     
     # verification
     @assert length(tape.tr) == tape.nnode-1  #root node is not on tr

@@ -8,7 +8,7 @@ function __init__()
     @show "loading ReverseDiffTape.jl"
 end
 
-export @timing,
+export @timing, @asserting, 
 #constant
     OP, S_TO_OC,
 #types
@@ -20,8 +20,7 @@ export @timing,
     tapeBuilder, #building tape from Julia expression 
     feval, 
     grad_reverse,  grad_structure,
-    hess_structure2, hess_reverse2, reset_hess2, prepare_reeval_hess2,
-    hess_structure3, hess_reverse3, reset_hess3, prepare_reeval_hess3,
+    hess_structure, hess_reverse, reset_hess, prepare_reeval_hess,
     tape_report_mem
 
 
@@ -36,10 +35,7 @@ include("./types.jl")
 include("./operator.jl")
 include("./func_eval.jl")
 include("./reverse_grad.jl")
-# include("./reverse_hess_ep.jl")
-include("./reverse_hess_ep2.jl")
-include("./reverse_hess_ep3.jl")
-include("./reverse_hess_ep4.jl")
+include("./reverse_hess_ep.jl")
 
 # warming up 
 # @printf "warming up ... \n"
