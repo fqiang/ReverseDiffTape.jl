@@ -21,18 +21,18 @@ end
 
 @time  grad_reverse(tt,x,p)
 
-@time hess_structure2(tt)
+@time hess_structure(tt)
 
-@time hess_reverse2(tt,x,p)
+@time hess_reverse(tt,x,p)
 
-ReverseDiffTape.prepare_reeval_hess2(tt)
-@time hess_reverse2(tt,x,p)
+ReverseDiffTape.prepare_reeval_hess(tt)
+@time hess_reverse(tt,x,p)
 
 
-ReverseDiffTape.reset_hess2(tt)
+ReverseDiffTape.reset_hess(tt)
 Profile.clear_malloc_data()
-@time hess_structure2(tt)
-@time hess_reverse2(tt,x,p)
+@time hess_structure(tt)
+@time hess_reverse(tt,x,p)
 
 
 

@@ -232,7 +232,7 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     tape.nnode = nnodes
     
     @assert idx == length(tt) + 1
-    # @show n
+    @show n
     
     #updating ID
     nid = vmax
@@ -254,7 +254,7 @@ function tape_analysize{I,V}(tape::Tape{I,V})
             tt[idx+1] = nid
             num = tt[idx+3]
             istklen = length(istk)
-            append!(tape.tr,slice(istk,istklen-num+1:istklen))
+            append!(tape.tr,sub(istk,istklen-num+1:istklen))
             resize!(istk,istklen-num)
             push!(istk, nid)
             idx += 5
@@ -527,83 +527,26 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                 end
             end
 
+            nv = length(rstk)
+            on = n - pnode - nv
+
             if pnode == n
                 return B_NODE(0,0,pval)
-            elseif n-length(rstk)-pnode == 0 && length(rstk) == 1
-                @assert pnode > 0
-                push!(pvals, pval)
-
-                push!(tt, TYPE_O3)
-                push!(tt,-1)
-                push!(tt, S_TO_OC[op])
-                push!(tt, length(pvals))
-                push!(tt, rstk[1].vidx)
-                push!(tt, TYPE_O3)
-                return B_NODE(5,0,0)
-            elseif n-length(rstk)-pnode != 0 && length(rstk) == 1
-                if n - length(rstk) - pnode > 1
-                    push!(tt,TYPE_O)
+            elseif nv == 1
+                if on == 1 && pnode == 0
+                    push!(tt,TYPE_O5)
                     push!(tt,-1)
                     push!(tt,S_TO_OC[op])
-                    push!(tt,n-length(rstk)-pnode)
-                    push!(tt,TYPE_O)
-
+                    push!(tt,rstk[1].vidx)
+                    push!(tt,TYPE_O5)
+                    return B_NODE(7,0,0.0)
+                elseif on == 1 && pnode > 0
                     push!(tt,TYPE_O5)
                     push!(tt,-1)
                     push!(tt,S_TO_OC[op])
                     push!(tt,rstk[1].vidx)
                     push!(tt,TYPE_O5)
 
-                    if pnode == 0
-                        return B_NODE(7,0,0.0)
-                    else
-                        push!(pvals, pval)
-                        push!(tt,TYPE_O1)
-                        push!(tt,-1)
-                        push!(tt,S_TO_OC[op])
-                        push!(tt,length(pvals))
-                        push!(tt,TYPE_O1)
-                        return B_NODE(3,0,0.0)
-                    end
-                else
-                    @assert n-length(rstk)-pnode ==1
-                    push!(tt,TYPE_O5)
-                    push!(tt,-1)
-                    push!(tt,S_TO_OC[op])
-                    push!(tt,rstk[1].vidx)
-                    push!(tt,TYPE_O5)
-
-                    if pnode == 0
-                        return B_NODE(7,0,0.0)
-                    else
-                        push!(pvals, pval)
-                        push!(tt,TYPE_O1)
-                        push!(tt,-1)
-                        push!(tt,S_TO_OC[op])
-                        push!(tt,length(pvals))
-                        push!(tt,TYPE_O1)
-                        return B_NODE(3,0,0.0)
-                    end
-                end
-            else
-                @assert length(rstk) == 0 || length(rstk)>1
-                # @show expr, length(rstk), pnode, n
-                @assert n - pnode >= 2
-                for item in rstk
-                    push!(tt, TYPE_V)
-                    push!(tt, item.vidx)
-                    push!(tt, TYPE_V)
-                end
-
-                push!(tt,TYPE_O)
-                push!(tt,-1)
-                push!(tt,S_TO_OC[op])
-                push!(tt,n-pnode)
-                push!(tt,TYPE_O)
-
-                if pnode == 0
-                    return B_NODE(2,0,0.0)
-                else
                     push!(pvals, pval)
                     push!(tt,TYPE_O1)
                     push!(tt,-1)
@@ -611,6 +554,108 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                     push!(tt,length(pvals))
                     push!(tt,TYPE_O1)
                     return B_NODE(3,0,0.0)
+                elseif on > 1 && pnode == 0
+                    push!(tt,TYPE_O)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,on)
+                    push!(tt,TYPE_O)
+
+                    push!(tt,TYPE_O5)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,rskt[1].vidx)
+                    push!(tt,TYPE_O5)
+                    return B_NODE(7,0,0.0)
+                elseif on == 0
+                    @assert pnode > 0
+                    push!(pvals,pval)
+                    push!(tt,TYPE_O3)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,length(pvals))
+                    push!(tt,rstk[1].vidx)
+                    push!(tt,TYPE_O3)
+                    return B_NODE(5,0,0.0)
+                else
+                    # @show expr, pnode, nv , on , n
+                    @assert on > 1 && pnode > 1 && nv == 1
+                    push!(tt,TYPE_O)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,on)
+                    push!(tt,TYPE_O)
+
+                    push!(tt,TYPE_O5)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,rskt[1].vidx)
+                    push!(tt,TYPE_O5)
+
+                    push!(pvals, pval)
+                    push!(tt,TYPE_O1)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,length(pvals))
+                    push!(tt,TYPE_O1)
+                    return B_NODE(3,0,0.0)
+                end
+            elseif nv > 1 
+                for item in rstk
+                    push!(tt, TYPE_V)
+                    push!(tt, item.vidx)
+                    push!(tt, TYPE_V)
+                end
+                @assert n-pnode > 1
+                push!(tt,TYPE_O)
+                push!(tt,-1)
+                push!(tt,S_TO_OC[op])
+                push!(tt,n-pnode)
+                push!(tt,TYPE_O)
+
+                if pnode > 0
+                    push!(pvals, pval)
+                    push!(tt, TYPE_O1)
+                    push!(tt,-1)
+                    push!(tt, S_TO_OC[op])
+                    push!(tt, length(pvals))
+                    push!(tt, TYPE_O1)
+                    return B_NODE(3,0,0)
+                else
+                    @assert pnode == 0
+                    return B_NODE(2,0,0.0)
+                end
+            elseif nv == 0
+                if on == 1 
+                    @assert pnode > 1
+                    push!(pvals, pval)
+                    push!(tt, TYPE_O1)
+                    push!(tt,-1)
+                    push!(tt, S_TO_OC[op])
+                    push!(tt, length(pvals))
+                    push!(tt, TYPE_O1)
+                    return B_NODE(3,0,0)
+                else
+                    @assert on > 1
+                    push!(tt,TYPE_O)
+                    push!(tt,-1)
+                    push!(tt,S_TO_OC[op])
+                    push!(tt,n-pnode)
+                    push!(tt,TYPE_O)
+
+                    if pnode > 0
+                        push!(pvals, pval)
+                        push!(tt, TYPE_O1)
+                        push!(tt,-1)
+                        push!(tt, S_TO_OC[op])
+                        push!(tt, length(pvals))
+                        push!(tt, TYPE_O1)
+                        return B_NODE(3,0,0)
+                    else
+                        # @show expr, pnode, nv , on , n
+                        @assert pnode == 0 && on == n
+                        return B_NODE(2,0,0.0)
+                    end
                 end
             end
         end

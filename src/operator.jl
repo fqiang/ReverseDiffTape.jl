@@ -126,7 +126,7 @@ for i = U_OP_START:U_OP_END
     ex = :(return $(o)(v))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
 @eval @inline function eval_0ord{V}(s::Symbol, v::V)
     if s==:-
         return -v
@@ -146,7 +146,7 @@ for i = B_OP_START:B_OP_END
     push!(switchblock.args,quot(o),ex)
 end
 
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
 @eval @inline function eval_0ord{V}(s::Symbol,l::V,r::V)
     $switchexpr
 end
@@ -184,7 +184,7 @@ for i = U_OP_START:U_OP_END
     push!(ex.args,parse("@inbounds imm[1]=$(dx)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(Symbol("@switch"))),:s,switchblock)
 @eval @inline function eval_1ord{V}(s::Symbol,v::V,imm::Vector{V})
     if s==:-
         @inbounds imm[1] = -one(V)
@@ -211,7 +211,7 @@ for i = B_OP_START:B_OP_END
     push!(switchblock.args,quot(o),ex)
 end
 
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
 # @show switchexpr
 @eval @inline function eval_1ord{V}(s::Symbol,l::V, r::V, imm::Vector{V})
     if s==:^
@@ -269,7 +269,7 @@ for i = U_OP_START:U_OP_END
     push!(ex.args,parse("@inbounds imm[2] = $(dxx)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(Symbol("@switch"))),:s,switchblock)
 @eval @inline function eval_2ord{V}(s::Symbol,v::V,imm::Vector{V})
     if s==:-
         @inbounds imm[1] = -one(V)
@@ -304,7 +304,7 @@ for i = B_OP_START:B_OP_END
     push!(ex.args,parse("@inbounds imm[5] = $(dyy)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
 @eval @inline function eval_2ord{V}(s::Symbol,l::V, r::V, imm::Vector{V})
     if s == :^
         exponent = r
