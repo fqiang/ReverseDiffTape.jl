@@ -35,6 +35,7 @@ type Tape{I,V}
     nnode::I
     maxoperands::I
     depth::I
+    immlen::I
 
     g_I::Vector{I}
     g::Vector{V}
@@ -50,7 +51,6 @@ type Tape{I,V}
     bhi::Vector{Vector{I}}
     bhv::Vector{Vector{V}}
     bh_idxes::Vector{I}   #current horizontal indicies
-    bh::Vector{Dict{I,V}}
     
     stk::Vector{V}
     vals::Vector{V}
@@ -72,7 +72,7 @@ type Tape{I,V}
         tape = new(
             tt,  #tt
             Vector{I}(), #reverse order level trace, tr vector
-            zero(I),zero(I),zero(I),zero(I),zero(I),
+            zero(I),zero(I),zero(I),zero(I),zero(I),zero(I),
             
             Vector{I}(),  #grad_I
             Vector{V}(),  #grad value
@@ -87,7 +87,6 @@ type Tape{I,V}
             Vector{Vector{I}}(),
             Vector{Vector{V}}(),
             Vector{I}(),    #current horizontal indicies
-            Vector{Dict{I,V}}(),
             
             Vector{V}(), 
             Vector{V}(),
@@ -158,7 +157,7 @@ function tape_cleanup{I,V}(tape::Tape{I,V})
     end
 end
 
-function tape_analysize{I,V}(tape::Tape{I,V})
+function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_mem)
     tt = tape.tt
     tr = tape.tr
     idx = one(I)
@@ -182,6 +181,7 @@ function tape_analysize{I,V}(tape::Tape{I,V})
             idx += 3
         elseif ntype == TYPE_O
             n[TYPE_O] +=1
+            @assert tt[idx+3] != 0
             mxn = max(mxn,tt[idx+3])
             if OP[tt[idx+2]]==:* 
                 mxn_times = max(mxn_times,tt[idx+3])
@@ -227,15 +227,16 @@ function tape_analysize{I,V}(tape::Tape{I,V})
         # @show vmax
     end
     tape.maxoperands = mxn
-    tape.nvar = vmax
+    tape.nvar = gnvar
     tape.nvnode = vnodes
     tape.nnode = nnodes
     
+    @assert gnvar >= vmax
     @assert idx == length(tt) + 1
-    @show n
+    # @show n
     
     #updating ID
-    nid = vmax
+    nid = gnvar
     idx = one(I)
     istk = Vector{I}()
     @inbounds while(idx <= length(tt))
@@ -312,7 +313,8 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     bhlen = nid
     # bh
     # @show tape.bh_type
-    if tape.bh_type == 1
+    if with_mem 
+        @assert tape.bh_type == 1
         tape.bhi = Vector{Vector{Int}}(bhlen)
         tape.bhv = Vector{Vector{Float64}}(bhlen)
         for i=1:bhlen
@@ -320,15 +322,15 @@ function tape_analysize{I,V}(tape::Tape{I,V})
             @inbounds tape.bhv[i] = Vector{Float64}()
         end
         tape.bh_idxes = zeros(Int,bhlen)  
-    elseif tape.bh_type == 2 
-        tape.bh = Vector{Dict{Int,Float64}}(bhlen);
-        for i = 1:bhlen
-            @inbounds tape.bh[i] = Dict{Int,Float64}();
-        end
-    else
-        @assert false tape.bh_type
     end
-
+    # elseif tape.bh_type == 2 
+    #     tape.bh = Vector{Dict{Int,Float64}}(bhlen);
+    #     for i = 1:bhlen
+    #         @inbounds tape.bh[i] = Dict{Int,Float64}();
+    #     end
+    # else
+    #     @assert false tape.bh_type
+    
     #timing vector for ep reverse
     @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
 
@@ -336,9 +338,10 @@ function tape_analysize{I,V}(tape::Tape{I,V})
     resize!(tape.g, tape.nvnode)
     resize!(tape.vals, tape.nnode)
     resize!(tape.stk, tape.depth + tape.maxoperands) 
-    immlen = convert(I,(mxn_times-1)*mxn_times/2)
-    resize!(tape.imm, immlen <=5?5:immlen)
-    @show mxn_times, tape.maxoperands, length(tape.vals), length(tape.stk), length(tape.imm)
+    tape.immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
+    resize!(tape.imm, tape.immlen)
+    
+    # @show mxn_times, tape.maxoperands, length(tape.vals), length(tape.stk), length(tape.imm)
     
     # verification
     @assert length(tape.tr) == tape.nnode-1  #root node is not on tr
@@ -353,10 +356,42 @@ end
 #
 ##########################################################################################
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V})
+function tapeBuilderSimple{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
     @assert length(tape.tt)==0
     tape_builder(expr,tape, pvals)
-    tape_analysize(tape)
+    tape_analysize(tape, gnvar, false)
+end
+
+function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
+    @assert length(tape.tt)==0
+    tape_builder(expr,tape, pvals)
+    tape_analysize(tape, gnvar, true)
+end
+
+function mergeTapes{I,V}(tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I)
+    @assert length(tape.tt) == 0
+    tt = tape.tt
+    mxd = zero(I)
+    for i=1:length(tapes)
+        mxd = max(tapes[i].depth,mxd)
+        append!(tt, tapes[i].tt)
+        push!(pvals,1.0)
+
+        push!(tt,TYPE_O1)
+        push!(tt,-1)
+        push!(tt,S_TO_OC[:*])
+        push!(tt,length(pvals))
+        push!(tt,TYPE_O1)
+    end
+
+    push!(tt, TYPE_O)
+    push!(tt,-1)
+    push!(tt,S_TO_OC[:+])
+    push!(tt,length(tapes))
+    push!(tt, TYPE_O)
+
+    tape.depth = mxd
+    tape_analysize(tape, gnvar, true)
 end
 
 type B_NODE{I,V}
@@ -511,7 +546,7 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                 return B_NODE(2,0,0.0)
             end
         else #n>2
-            @assert op == :* || op == :+ && n>2
+            @assert (op == :* || op == :+) && n>2
             rstk = Vector{B_NODE}()
             pval = zero(V)
             pnode = zero(I)
@@ -637,11 +672,13 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                     return B_NODE(3,0,0)
                 else
                     @assert on > 1
+                    @assert n-pnode > 0
                     push!(tt,TYPE_O)
                     push!(tt,-1)
                     push!(tt,S_TO_OC[op])
                     push!(tt,n-pnode)
                     push!(tt,TYPE_O)
+
 
                     if pnode > 0
                         push!(pvals, pval)

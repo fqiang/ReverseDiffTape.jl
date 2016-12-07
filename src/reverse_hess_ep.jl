@@ -478,7 +478,7 @@ end
 @inline function update2(tape,to,from,w)
     # @show "update2 - ", to, "<-- ", from, w
     @inbounds tape.bh_idxes[to] += 1  
-    # assert(tape.bhi[to][tape.bh_idxes[to]] == from)
+    # @assert tape.bhi[to][tape.bh_idxes[to]] == from
     @inbounds tape.bhv[to][tape.bh_idxes[to]] = w
 
     if to <= tape.nvar && from > tape.nvar
@@ -564,7 +564,8 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
                     drw = dr*w
                     if p_id == i_id
                         update2(tape,li_id, li_id, dl*dlw)
-                        update2(tape,ri_id, li_id, dl*drw)
+                        dlrw = dl*drw
+                        update2(tape,ri_id, li_id, ri_id == li_id? 2.0*dlrw:dlrw)
                         update2(tape,ri_id, ri_id, dr*drw)
                     else
                         update2(tape,li_id, p_id, li_id == p_id? 2.0*dlw:dlw)
@@ -633,8 +634,8 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
                         @inbounds p_id = lvi[j]
                         @inbounds w = lvv[j]
                         if p_id == i_id
+                            k=1
                             for j0=trlen-n+1:trlen 
-                                k = 1
                                 @inbounds ci_id = tr[j0]
                                 @inbounds t0 = imm[k]
                                 t1 = t0 * w
@@ -644,14 +645,14 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
                                 for j1=j0+1:trlen
                                     @inbounds cii_id = tr[j1]
                                     @inbounds w_bar1 = t1*imm[k0]
-                                    update2(tape,cii_id, ci_id,w_bar1)
+                                    update2(tape,cii_id, ci_id,cii_id==ci_id? 2.0*w_bar1:w_bar1)
                                     k0 += 1
                                 end
                                 k += 1
                             end
                         else  
+                            k=1
                             for j0 = trlen -n + 1:trlen
-                                k = 1
                                 @inbounds ci_id = tr[j0]
                                 @inbounds w_bar = imm[k]*w
                                 update2(tape,ci_id, p_id, ci_id == p_id? 2.0*w_bar:w_bar)
@@ -660,6 +661,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
                         end
                     end
                     #creating
+                    # @show "creating", adj
                     k=n+1
                     @simd for j0 = trlen -n + 1:trlen
                         @inbounds ci_id = tr[j0]

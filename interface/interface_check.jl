@@ -109,6 +109,7 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
 end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr;with_timing=false)
+    # @show with_timing
     e = TapeNLPEvaluator(nlpe, 
         numVar,numConstr,0,
         Vector{Float64}(), #parameter values
@@ -177,7 +178,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     gnvar = MathProgBase.numvar(jd.m)
 
     @timing d.enable_timing_stats tic()
-    MathProgBase.initialize(jd,[:ExprGraph])
+    MathProgBase.initialize(jd,[:ExprGraph,:Hess, :Jac, :Grad])
     @timing d.enable_timing_stats d.jd_init += toq()
     # @show "JuMP evaluator initialize ", d.jd_init
 
@@ -188,6 +189,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     #@assert length(d.pvals) == 0  ## assume no values in pvals
     # @show "build objective"
     @timing d.enable_timing_stats tic()
+    # @show objexpr
     tapeBuilder(objexpr,d.obj_tt,d.pvals, gnvar)
     @timing d.enable_timing_stats d.tape_build += toq()
     # @show d.pvals
@@ -220,6 +222,8 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
 
     
     # @show "TapeNLPEvaluator initialize ",d.tape_build
+    
+    # @show "MathProgBase.initialize - done"
     d.init = 1  #set initialized tapes
     nothing
 end
@@ -232,11 +236,16 @@ function MathProgBase.eval_f(d::TapeNLPEvaluator, x)
     v = feval(d.obj_tt,x,d.pvals)
     @timing d.enable_timing_stats d.eval_f_time += toq()
     
+    @show "eval_f"
+    jv = MathProgBase.eval_f(d.jd,x)
+    @assert abs(jv-v)<1e-8 "$jv $v"
+    
     return v
 end
 
 #evaluate the objective gradient on given iterate x. Results is set to g
 function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
+    #@assert length(g) == length(x)
     fill!(g,0.0)
     tape = d.obj_tt
     @assert tape.nzg!=-1
@@ -250,22 +259,38 @@ function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
         @inbounds g[tape.g_I[i]] += tape.g[i]
     end
     
+    @show "eval_grad_f"
+    jg = zeros(length(g))
+    MathProgBase.eval_grad_f(d.jd,jg,x)
+    for i=1:length(jg)
+        @assert abs(jg[i]-g[i])<1e-10 "$i $(g[i]) $(jg[i])"
+    end
+    
     return nothing
 end
 
 #constraint evaluation
 function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
+    #@assert length(g) == d.numConstr
     @timing d.enable_timing_stats tic()
     @inbounds for i=1:d.numConstr
         @inbounds g[i]=feval(d.constr_tt[i],x,d.pvals)
     end
     @timing d.enable_timing_stats d.eval_g_time += toq()
     
+    @show "eval_g"
+    jg = zeros(length(g))
+    MathProgBase.eval_g(d.jd,jg,x)
+    for i=1:length(jg)
+        @assert abs(jg[i]-g[i])<1e-10  "$i $(g[i]) $(jg[i])"
+    end
+
     return nothing 
 end
 
 
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
+    # @show "jac_structure"
     @assert d.jac_nnz == -1
     for i=1:d.numConstr
         @inbounds tape_i = d.constr_tt[i]
@@ -279,6 +304,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     end
 
     d.jac_nnz = length(d.jac_I)
+    # @show d.jac_nnz, d.jac_I, d.jac_J
     return d.jac_I, d.jac_J
 end
 
@@ -296,7 +322,21 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
         J_len += length(tape_i.g)
     end
     
-    return
+    @show "eval_jac_g"
+    mat = sparse(d.jac_I,d.jac_J,J)
+    (jI,jJ) = MathProgBase.jac_structure(d.jd)
+    jE = zeros(length(jI))
+    MathProgBase.eval_jac_g(d.jd,jE,x)
+    jmat = sparse(jI,jJ,jE)
+    @assert mat.n == jmat.n "$(mat.n) $(jmat.n)"
+    @assert mat.m == jmat.m "$(mat.m) $(jmat.m)"
+    for i=1:mat.n
+        for j=1:mat.m
+            @assert abs(mat[j,i]-jmat[j,i])<1e-10 "$i $j $(mat[j,i]) $(jmat[j,i])"
+        end
+    end
+
+    return nothing
 end
 
 function MathProgBase.eval_hesslag_prod(
@@ -307,7 +347,7 @@ function MathProgBase.eval_hesslag_prod(
     σ::Float64,         # multiplier for objective
     μ::Vector{Float64}) # multipliers for each constraint
 
-    #@assert false 
+    @assert false 
     MathProgBase.eval_hesslag_prod(d,h,x,v,σ,μ)
 end
 
@@ -331,7 +371,7 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     
     d.laghess_nnz = length(d.laghess_I)
     @timing true d.hesslag_structure_time += toq()
-    
+
     return  d.laghess_I, d.laghess_J
 end
 
@@ -341,13 +381,17 @@ function MathProgBase.eval_hesslag(
     x::Vector{Float64},         # Current solution
     obj_factor::Float64,        # Lagrangian multiplier for objective
     lambda::Vector{Float64})    # Multipliers for each constraint
-   
+    
     @assert length(d.pvals)-d.lag_start + 1 == length(lambda)
     @assert length(H) == d.laghess_nnz    
     
     @timing true tic()
-    prepare_reeval_hess(d.obj_tt)
     
+    # @timing d.enable_timing_stats tic()  
+    prepare_reeval_hess(d.obj_tt)
+    # @show d.obj_tt.tt
+    # @show d.obj_tt.tr
+
     hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
     m=1
     @simd for i=1:length(d.obj_tt.hess)
@@ -356,21 +400,32 @@ function MathProgBase.eval_hesslag(
     end
     
     #with single constraint block
-    if d.numConstr > 0 
-        prepare_reeval_hess(d.lag_tt)
-        j=1
-        @simd for i=d.lag_start:length(d.pvals)
-            @inbounds d.pvals[i] = lambda[j]
-            j+=1
-        end
+    prepare_reeval_hess(d.lag_tt)
+    j=1
+    @simd for i=d.lag_start:length(d.pvals)
+        @inbounds d.pvals[i] = lambda[j]
+        j+=1
+    end
 
-        hess_reverse(d.lag_tt,x,d.pvals,1.0)
-        @simd for j=1:length(d.lag_tt.hess)
-            @inbounds H[m] = d.lag_tt.hess[j]
-            m+=1
-        end
+    hess_reverse(d.lag_tt,x,d.pvals,1.0)
+    @simd for j=1:length(d.lag_tt.hess)
+        @inbounds H[m] = d.lag_tt.hess[j]
+        m+=1
     end
     #end with single constraint block
+    
+    @show "eval_hesslag"
+    mat = sparse(d.laghess_I,d.laghess_J,H)
+    (jI, jJ) = MathProgBase.hesslag_structure(d.jd)
+    jH = Vector{Float64}(length(jI))
+    MathProgBase.eval_hesslag(d.jd, jH,x,obj_factor,lambda)
+    jmat = sparse(jI,jJ,jH)
+    for i=1:mat.n
+        for j=i:mat.m
+            @assert abs(mat[j,i]-jmat[j,i])<1e-8 "$i $j $(mat[i,j]) $(jmat[i,j])"
+        end
+    end
+
 
     @timing true d.eval_hesslag_time += toq()
     return

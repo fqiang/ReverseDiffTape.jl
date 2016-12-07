@@ -18,6 +18,8 @@ export @timing, @asserting,
 #Functions
     append_array,
     tapeBuilder, #building tape from Julia expression 
+    tapeBuilderSimple, 
+    mergeTapes,
     feval, 
     grad_reverse,  grad_structure,
     hess_structure, hess_reverse, reset_hess, prepare_reeval_hess,
