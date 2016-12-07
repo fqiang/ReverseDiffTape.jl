@@ -5,12 +5,7 @@ function reset_hess{I,V}(tape::Tape{I,V})
         @inbounds tape.bhi[i] = Vector{Int}()
         @inbounds tape.bhv[i] = Vector{Float64}()
     end
-
     fill!(tape.bh_idxes,zero(I))
-
-    tape.h_I = Vector{I}() #hess_I
-    tape.h_J = Vector{I}() #hess_J
-    tape.hess = Vector{V}() #hess value
     tape.nzh = -one(I)     #hess indicator
     nothing
 end
@@ -319,39 +314,37 @@ function hess_findnz{I,V}(tape::Tape{I,V})
     nothing
 end
 
-function hess_struct_recovery{I,V}(tape::Tape{I,V}) 
+function hess_struct_recovery{I,V}(tape::Tape{I,V}, h_I::Vector{I}, h_J::Vector{I}) 
     #@timing tape.enable_timing_stats tic()
-    resize!(tape.h_I, tape.nzh)
-    resize!(tape.h_J, tape.nzh)
-    resize!(tape.hess, tape.nzh)
-
+    @assert length(h_I) == length(h_J)
+    pre = length(h_I)
+    start = pre + 1
+    append!(h_I, zeros(tape.nzh))
+    append!(h_J, zeros(tape.nzh))
+    
     bhi = tape.bhi
     nvar = tape.nvar
-    h_I = tape.h_I
-    h_J = tape.h_J
-    nz = zero(I)
     
     for i=1:nvar
-        # @inbounds lvi = bh[i]
         @inbounds lvi = bhi[i]
         for j = 1:length(lvi)
-            # @inbounds v_id = lvi[j].i
             @inbounds v_id = lvi[j]
             if v_id <= nvar
                 if v_id <= i  #assert lower trangular
-                    nz += 1
-                    @inbounds h_I[nz] = i
-                    @inbounds h_J[nz] = v_id
+                    @inbounds h_I[start] = i
+                    @inbounds h_J[start] = v_id
                 else 
-                    nz += 1
-                    @inbounds h_I[nz] = v_id
-                    @inbounds h_J[nz] = i
+                    @inbounds h_I[start] = v_id
+                    @inbounds h_J[start] = i
                 end
+                start += 1
             end
         end
     end
 
-    #@assert tape.nzh == nz
+    # resize!(tape.hess, tape.nzh)
+
+    @assert start - pre  - 1 == tape.nzh "$start $pre $(tape.nzh)"
     #@timing tape.enable_timing_stats tape.ep_structure_recovery += toq()
     nothing
 end
@@ -469,7 +462,7 @@ function forward_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array
         #     #@assert false
         end
     end
-    #@assert stklen == 1 && vallen + 1 == tape.nnode == length(vals)
+    @assert stklen == 1 && vallen + 1 == tape.nnode
     @inbounds ret = vals[vallen + 1] = stk[stklen]
     #@timing tape.enable_timing_stats tape.ep_forward_time += toq()
     return ret
@@ -496,7 +489,7 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
     bh_idxes = tape.bh_idxes
     idx = length(tt)
     trlen = length(tr)
-    vallen = length(vals) - 1
+    vallen = tape.nnode - 1
 
     adjs = tape.stk
     adjlen = 1
@@ -973,38 +966,37 @@ function reverse_pass_2ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
 end
 
 
-@inline function hess_recovery(tape::Tape{Int,Float64}, factor::Float64)
+@inline function hess_recovery(tape::Tape{Int,Float64}, start::Int, H::Vector{Float64})
     #@timing tape.enable_timing_stats tic()
-    h = tape.hess
+    h = H
     nvar = tape.nvar
     bhi = tape.bhi
     bhv = tape.bhv
 
-    nnz = zero(Int)
+    pre = start
     for i = 1:nvar
         @inbounds lvi = bhi[i]
         @inbounds lvv = bhv[i]
         for j = 1:length(lvi)
             @inbounds v_id = lvi[j]
             if v_id <= nvar
-                nnz += 1
-                @inbounds h[nnz] = factor*lvv[j]
+                @inbounds h[start] = lvv[j]
+                start += 1
             end
         end
     end 
-    # @show nnz, tape.nzh, length(h)
-    #@assert length(h) == nnz
+    @assert start - pre == tape.nzh "$pre $start $(tape.nzh)"
     #@timing tape.enable_timing_stats tape.ep_recovery_time += toq()
     nothing
 end
 
 
 #Interface function
-function hess_structure{I,V}(tape::Tape{I,V})
+function hess_structure{I,V}(tape::Tape{I,V}, h_I::Vector{I}, h_J::Vector{I})
     #@assert tape.bh_type == 1
     hess_struct(tape)
     hess_findnz(tape)
-    hess_struct_recovery(tape)
+    hess_struct_recovery(tape, h_I, h_J)
     nothing
 end
 
@@ -1013,13 +1005,13 @@ function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
     nothing
 end
 
-function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, factor::V)
+function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, start::I, H::Vector{V})
     #@timing tape.enable_timing_stats tape.ep_n += 1
 
     forward_pass_2ord(tape,vvals,pvals)
     reverse_pass_2ord(tape,vvals,pvals)
     # @time recovery2(tape, tape.bhi,tape.bhv,tape.hess,tape.nvar, factor)
-    hess_recovery(tape,factor)
+    hess_recovery(tape,start,H)
     nothing
 end
 

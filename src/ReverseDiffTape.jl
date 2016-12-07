@@ -19,9 +19,9 @@ export @timing, @asserting,
     append_array,
     tapeBuilder, #building tape from Julia expression 
     tapeBuilderSimple, 
-    mergeTapes,
+    mergeTapes,resizeWorkingMemory,
     feval, 
-    grad_reverse,  grad_structure,
+    grad_reverse, grad_reverse_dense, grad_structure,
     hess_structure, hess_reverse, reset_hess, prepare_reeval_hess,
     tape_report_mem
 

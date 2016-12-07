@@ -37,13 +37,7 @@ type Tape{I,V}
     depth::I
     immlen::I
 
-    g_I::Vector{I}
-    g::Vector{V}
     nzg::I
-    
-    h_I::Vector{I}
-    h_J::Vector{I}
-    hess::Vector{V}
     nzh::I
 
     #bh
@@ -68,19 +62,13 @@ type Tape{I,V}
     ep_n::I
 
 
-    function Tape(;tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=true)
+    function Tape(stk::Vector{V}, vals::Vector{V}, imm::Vector{V}; tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=true)
         tape = new(
             tt,  #tt
             Vector{I}(), #reverse order level trace, tr vector
             zero(I),zero(I),zero(I),zero(I),zero(I),zero(I),
             
-            Vector{I}(),  #grad_I
-            Vector{V}(),  #grad value
             -one(I),      #grad indicator
-            
-            Vector{I}(),  #hess_I
-            Vector{I}(),  #hess_J
-            Vector{V}(),  #hess value
             -one(I),      #hess indicator
 
             bh_type, #bh_type
@@ -88,9 +76,9 @@ type Tape{I,V}
             Vector{Vector{V}}(),
             Vector{I}(),    #current horizontal indicies
             
-            Vector{V}(), 
-            Vector{V}(),
-            Vector{V}(),
+            stk, 
+            vals,
+            imm,
             
             with_debug, with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
@@ -157,7 +145,7 @@ function tape_cleanup{I,V}(tape::Tape{I,V})
     end
 end
 
-function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_mem)
+function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
     tt = tape.tt
     tr = tape.tr
     idx = one(I)
@@ -309,12 +297,11 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_mem)
             @assert false
         end
     end
+    tape.immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
 
-    bhlen = nid
-    # bh
-    # @show tape.bh_type
-    if with_mem 
+    if with_hess_mem 
         @assert tape.bh_type == 1
+        bhlen = nid
         tape.bhi = Vector{Vector{Int}}(bhlen)
         tape.bhv = Vector{Vector{Float64}}(bhlen)
         for i=1:bhlen
@@ -322,32 +309,38 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_mem)
             @inbounds tape.bhv[i] = Vector{Float64}()
         end
         tape.bh_idxes = zeros(Int,bhlen)  
+        #timing vector for ep reverse
+        @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
     end
-    # elseif tape.bh_type == 2 
-    #     tape.bh = Vector{Dict{Int,Float64}}(bhlen);
-    #     for i = 1:bhlen
-    #         @inbounds tape.bh[i] = Dict{Int,Float64}();
-    #     end
-    # else
-    #     @assert false tape.bh_type
-    
-    #timing vector for ep reverse
-    @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
-
-    resize!(tape.g_I, tape.nvnode)
-    resize!(tape.g, tape.nvnode)
-    resize!(tape.vals, tape.nnode)
-    resize!(tape.stk, tape.depth + tape.maxoperands) 
-    tape.immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
-    resize!(tape.imm, tape.immlen)
-    
-    # @show mxn_times, tape.maxoperands, length(tape.vals), length(tape.stk), length(tape.imm)
     
     # verification
     @assert length(tape.tr) == tape.nnode-1  #root node is not on tr
 end
 
+function resizeWorkingMemory{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::Vector{Tape{I,V}})
+    mx_vallen = max(obj_tt.nnode,lag_tt.nnode)
+    mx_depth  = max(obj_tt.depth,lag_tt.depth)
+    mx_ops    = max(obj_tt.maxoperands,lag_tt.maxoperands)
+    mx_immlen = max(obj_tt.immlen,lag_tt.immlen)
+    # @show mx_vallen, mx_depth, mx_ops, mx_immlen, length(obj_tt.vals), length(obj_tt.stk), length(obj_tt.imm)
 
+    for i=1:length(cons_tt)
+        mx_immlen = max(mx_immlen,cons_tt[i].immlen)
+        mx_vallen = max(mx_vallen,cons_tt[i].nnode)
+        mx_depth = max(mx_depth,cons_tt[i].depth)
+        mx_ops = max(mx_ops,cons_tt[i].maxoperands)
+    end
+    resize!(obj_tt.stk, mx_depth + mx_ops)
+    resize!(obj_tt.vals, mx_vallen)
+    resize!(obj_tt.imm, mx_immlen)
+    # @show mx_vallen, mx_depth, mx_ops, mx_immlen, length(obj_tt.vals), length(obj_tt.stk), length(obj_tt.imm)
+
+    for i = 1:length(cons_tt)
+        @assert length(cons_tt[i].imm) == length(obj_tt.imm) == length(lag_tt.imm)
+        @assert length(cons_tt[i].stk) == length(obj_tt.stk) == length(lag_tt.stk) 
+        @assert length(cons_tt[i].vals) == length(obj_tt.vals) == length(lag_tt.vals)
+    end
+end
 
 ##########################################################################################
 #
@@ -365,13 +358,26 @@ end
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
     @assert length(tape.tt)==0
     tape_builder(expr,tape, pvals)
-    tape_analysize(tape, gnvar, true)
+    tape_analysize(tape, gnvar, false)
 end
 
-function mergeTapes{I,V}(tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I)
+function mergeTapes{I,V}(tape::Tape{I,V}, obj_tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I)
     @assert length(tape.tt) == 0
     tt = tape.tt
     mxd = zero(I)
+    
+    #objective
+    mxd = max(obj_tape.depth,mxd)
+    append!(tt, obj_tape.tt)
+    push!(pvals,1.0)
+
+    push!(tt,TYPE_O1)
+    push!(tt,-1)
+    push!(tt,S_TO_OC[:*])
+    push!(tt,length(pvals))
+    push!(tt,TYPE_O1)
+
+    #constraints
     for i=1:length(tapes)
         mxd = max(tapes[i].depth,mxd)
         append!(tt, tapes[i].tt)
@@ -384,11 +390,14 @@ function mergeTapes{I,V}(tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vecto
         push!(tt,TYPE_O1)
     end
 
-    push!(tt, TYPE_O)
-    push!(tt,-1)
-    push!(tt,S_TO_OC[:+])
-    push!(tt,length(tapes))
-    push!(tt, TYPE_O)
+    #adding all
+    if length(tapes) > 0
+        push!(tt, TYPE_O)
+        push!(tt,-1)
+        push!(tt,S_TO_OC[:+])
+        push!(tt,length(tapes)+1)
+        push!(tt, TYPE_O)
+    end
 
     tape.depth = mxd
     tape_analysize(tape, gnvar, true)
@@ -794,78 +803,78 @@ end
 
 
 ##########################################################################################
-function tape_report_mem(tape)
-    report_tape_mem(tape,tape.h_type)
-end
+# function tape_report_mem(tape)
+#     report_tape_mem(tape,tape.h_type)
+# end
 
-function tape_report_mem{I,V}(tape::Tape{I,V},ep::I)
-    si = sizeof(I)
-    sf = sizeof(V)
-    i  = 0
-    tb = 0
+# function tape_report_mem{I,V}(tape::Tape{I,V},ep::I)
+#     si = sizeof(I)
+#     sf = sizeof(V)
+#     i  = 0
+#     tb = 0
 
-    tb_now = length(tape.tt) * si
-    @show "tape ", length(tape.tt), tb_now
-    tb += tb_now
+#     tb_now = length(tape.tt) * si
+#     @show "tape ", length(tape.tt), tb_now
+#     tb += tb_now
 
-    tb_now = length(tape.stk) *si
-    @show "stk ", length(tape.stk), tb_now
-    tb += tb_now
+#     tb_now = length(tape.stk) *si
+#     @show "stk ", length(tape.stk), tb_now
+#     tb += tb_now
 
-    tb_now = length(tape.g_I) * si + length(tape.g)*sf + 1*si
-    tb += tb_now
+#     tb_now = length(tape.g_I) * si + length(tape.g)*sf + 1*si
+#     tb += tb_now
     
-    tb_now = length(tape.h_I) * si + length(tape.h_J) * si + length(tape.hess)*sf+ 1*si
-    tb += tb_now
-    @show " hessian nnz", length(tape.h_I)
+#     tb_now = length(tape.h_I) * si + length(tape.h_J) * si + length(tape.hess)*sf+ 1*si
+#     tb += tb_now
+#     @show " hessian nnz", length(tape.h_I)
 
-    tb_now = sizeof(tape.node_idx_to_number)
-    tb_now += length(tape.node_idx_to_number.nzval)  * sf
-    tb_now += length(tape.node_idx_to_number.colptr)  * si
-    tb_now += length(tape.node_idx_to_number.rowval) * si
-    tb += tb_now
+#     tb_now = sizeof(tape.node_idx_to_number)
+#     tb_now += length(tape.node_idx_to_number.nzval)  * sf
+#     tb_now += length(tape.node_idx_to_number.colptr)  * si
+#     tb_now += length(tape.node_idx_to_number.rowval) * si
+#     tb += tb_now
 
-    if ep==2
-        tb_now = sizeof(tape.bh)
-        for j = 1:length(tape.bh)
-            tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
-            tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
-        end
-        @show "bh - bytes ", tb_now
-        tb += tb_now
-    elseif ep==3
-        tb_now = sizeof(tape.bh3)
-        for d in tape.bh3
-            tb_now += sizeof(d)
-            tb_now += length(d) * (sizeof(I) + sizeof(V))
-        end
-        @show "bh - bytes ", tb_now
-        tb += tb_now    
-    end
+#     if ep==2
+#         tb_now = sizeof(tape.bh)
+#         for j = 1:length(tape.bh)
+#             tb_now += sizeof(tape.bh[j])  #length(bh[j]) * 8
+#             tb_now += length(tape.bh[j]) * sizeof(mPair{I,V})
+#         end
+#         @show "bh - bytes ", tb_now
+#         tb += tb_now
+#     elseif ep==3
+#         tb_now = sizeof(tape.bh3)
+#         for d in tape.bh3
+#             tb_now += sizeof(d)
+#             tb_now += length(d) * (sizeof(I) + sizeof(V))
+#         end
+#         @show "bh - bytes ", tb_now
+#         tb += tb_now    
+#     end
 
-    tb_now = length(tape.bh_idxes) * si
-    @show "bh_idxes ", length(tape.bh_idxes), tb_now
-    tb += tb_now
+#     tb_now = length(tape.bh_idxes) * si
+#     @show "bh_idxes ", length(tape.bh_idxes), tb_now
+#     tb += tb_now
 
-    tb_now = length(tape.imm) * sf
-    @show "imm ", length(tape.imm), tb_now,  "needed length " , tape.imm2ordlen
-    tb += tb_now
+#     tb_now = length(tape.imm) * sf
+#     @show "imm ", length(tape.imm), tb_now,  "needed length " , tape.imm2ordlen
+#     tb += tb_now
 
-    tb += 2*si #imm1ordlen , imm2ordlen
+#     tb += 2*si #imm1ordlen , imm2ordlen
 
-    tb_now = length(tape.tr) * si
-    @show "tr ",length(tape.tr), tb_now
-    tb += tb_now
-    tb += 1*si  #trlen
+#     tb_now = length(tape.tr) * si
+#     @show "tr ",length(tape.tr), tb_now
+#     tb += tb_now
+#     tb += 1*si  #trlen
 
-    tb += 5* si #nvar, nvnode, nnode, maxoperands, fstkmax
+#     tb += 5* si #nvar, nvnode, nnode, maxoperands, fstkmax
 
-    @show " tape = ", tb ," bytes"
+#     @show " tape = ", tb ," bytes"
 
-    tb_ep1 = sizeof(tape.eset)
-    tb_ep1 += sizeof(tape.liveVar)
-    tb_ep1 += sizeof(tape.h)
-    @show " with ep1 data ", tb_ep1, " bytes "
+#     tb_ep1 = sizeof(tape.eset)
+#     tb_ep1 += sizeof(tape.liveVar)
+#     tb_ep1 += sizeof(tape.h)
+#     @show " with ep1 data ", tb_ep1, " bytes "
 
-    return tb+tb_ep1
-end
+#     return tb+tb_ep1
+# end

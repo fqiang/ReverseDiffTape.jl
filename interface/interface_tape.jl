@@ -59,7 +59,7 @@ end
 
 function MathProgBase.loadproblem!(m::TapeData, numVar, numConstr, l, u, lb, ub, sense, jd::MathProgBase.AbstractNLPEvaluator)
     # @show "TapeData - loadproblem"
-    tape_evaluator = TapeNLPEvaluator(jd,numVar,numConstr, with_timing=false)
+    tape_evaluator = TapeNLPEvaluator(jd,numVar,numConstr)
     m.evaluator = tape_evaluator
     MathProgBase.loadproblem!(m.m,numVar,numConstr,l,u,lb,ub,sense,tape_evaluator)
 end
@@ -109,12 +109,15 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
 end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr;with_timing=false)
+    stk = Vector{Float64}()
+    vals = Vector{Float64}()
+    imm = Vector{Float64}()
     e = TapeNLPEvaluator(nlpe, 
         numVar,numConstr,0,
         Vector{Float64}(), #parameter values
         
-        Tape{Int,Float64}(with_timing=false), #objective tape
-        Tape{Int,Float64}(with_timing=false), #lag_tt
+        Tape{Int,Float64}(stk,vals,imm), #objective tape
+        Tape{Int,Float64}(stk,vals,imm), #lag_tt
         Vector{Tape{Int,Float64}}(),  #constraints tape
 
         Vector{Int}(), #nl_idxes
@@ -193,34 +196,33 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     # @show d.pvals
 
     #compute gradient structure for f
-    grad_structure(d.obj_tt)
+    # grad_structure(d.obj_tt)
 
     for i =1:d.numConstr
         conexpr = MathProgBase.constr_expr(jd,i)
         if !MathProgBase.isconstrlinear(jd,i) 
             push!(d.nl_idxes,i)
         end
-        # @show conexpr.args[1]
-        # @show dump(conexpr)
         j = length(conexpr.args)==3?1:3
-        tt = Tape{Int,Float64}()
-        # @show "build constraint $i" 
+        tt = Tape{Int,Float64}(d.obj_tt.stk,d.obj_tt.vals,d.obj_tt.imm)
         @timing d.enable_timing_stats tic()
         tapeBuilderSimple(conexpr.args[j],tt,d.pvals, gnvar)
         @timing d.enable_timing_stats d.tape_build += toq()
         push!(d.constr_tt,tt)
     end
 
-    #build single constraints
-    d.lag_start = length(d.pvals) + 1
-    if length(d.constr_tt) != 0 
-        mergeTapes(d.lag_tt,d.constr_tt,d.pvals, gnvar)
-    end
+    #build single lag
+    d.lag_start = length(d.pvals) + 2
+    mergeTapes(d.lag_tt,d.obj_tt, d.constr_tt,d.pvals, gnvar)
+    @show d.lag_tt.depth
     @assert (d.lag_start + length(d.constr_tt) - 1) == length(d.pvals)
+    #end building single lag
 
+    resizeWorkingMemory(d.obj_tt,d.lag_tt,d.constr_tt)
     
+
     # @show "TapeNLPEvaluator initialize ",d.tape_build
-    d.init = 1  #set initialized tapes
+    d.init = 1  #set initialized 
     nothing
 end
 
@@ -238,17 +240,10 @@ end
 #evaluate the objective gradient on given iterate x. Results is set to g
 function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
     fill!(g,0.0)
-    tape = d.obj_tt
-    @assert tape.nzg!=-1
         
     @timing d.enable_timing_stats tic()
-    grad_reverse(tape,x,d.pvals)
+    grad_reverse_dense(d.obj_tt,x,d.pvals,g)
     @timing d.enable_timing_stats d.eval_grad_f_time += toq()
-
-    #converting to dense
-    for i = 1:length(tape.g_I)
-        @inbounds g[tape.g_I[i]] += tape.g[i]
-    end
     
     return nothing
 end
@@ -268,34 +263,34 @@ end
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     @assert d.jac_nnz == -1
     for i=1:d.numConstr
-        @inbounds tape_i = d.constr_tt[i]
+        @inbounds tt_i = d.constr_tt[i]
         @timing d.enable_timing_stats tic()
-        grad_structure(tape_i)
+        grad_structure(tt_i, d.jac_J)
         @timing d.enable_timing_stats d.jac_structure_time += toq()
-        v = Vector{Int}(length(tape_i.g_I))
+        
+        v = Vector{Int}(tt_i.nzg)
         fill!(v,i)
-        append!(d.jac_I,v)
-        append!(d.jac_J,tape_i.g_I)
+        append!(d.jac_I,v) 
     end
 
     d.jac_nnz = length(d.jac_I)
+    @assert length(d.jac_I) == length(d.jac_J) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
     return d.jac_I, d.jac_J
 end
 
 function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
-    #@assert d.jac_nnz != -1  #structure already computed
-    assert(length(J) == d.jac_nnz)
+    @assert d.jac_nnz != -1  #structure already computed
+    @assert length(J) == d.jac_nnz
 
-    J_len = 0
+    j = 1
     for i = 1:d.numConstr
-        @inbounds tape_i = d.constr_tt[i]
+        @inbounds tt_i = d.constr_tt[i]
         @timing d.enable_timing_stats tic()
-        grad_reverse(tape_i,x,d.pvals)
+        grad_reverse(tt_i,x,d.pvals,j,J)
+        j += tt_i.nzg
         @timing d.enable_timing_stats d.eval_jac_g_time += toq()
-        append_array(J,J_len,tape_i.g,0,length(tape_i.g))
-        J_len += length(tape_i.g)
     end
-    
+    @assert j-1 == d.jac_nnz "$j $(d.jac_nnz)"
     return
 end
 
@@ -316,22 +311,15 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     @assert length(d.laghess_I) == length(d.laghess_J) == 0
     
     @timing true tic()
-    hess_structure(d.obj_tt)
-    
-    append!(d.laghess_I, d.obj_tt.h_I)
-    append!(d.laghess_J, d.obj_tt.h_J)
       
-
     #with single constraints block
-    hess_structure(d.lag_tt)
-    
-    append!(d.laghess_I, d.lag_tt.h_I)
-    append!(d.laghess_J, d.lag_tt.h_J)
+    hess_structure(d.lag_tt,d.laghess_I, d.laghess_J)
     #end single constraint block
     
     d.laghess_nnz = length(d.laghess_I)
     @timing true d.hesslag_structure_time += toq()
-    
+   
+    @assert d.laghess_nnz == length(d.laghess_J) == length(d.laghess_I) == d.lag_tt.nzh
     return  d.laghess_I, d.laghess_J
 end
 
@@ -342,34 +330,21 @@ function MathProgBase.eval_hesslag(
     obj_factor::Float64,        # Lagrangian multiplier for objective
     lambda::Vector{Float64})    # Multipliers for each constraint
    
-    @assert length(d.pvals)-d.lag_start + 1 == length(lambda)
+    @assert (length(d.pvals)-d.lag_start+1) == length(lambda)
     @assert length(H) == d.laghess_nnz    
     
     @timing true tic()
-    prepare_reeval_hess(d.obj_tt)
-    
-    hess_reverse(d.obj_tt,x,d.pvals,obj_factor)
-    m=1
-    @simd for i=1:length(d.obj_tt.hess)
-        @inbounds H[m] = d.obj_tt.hess[i]
-        m += 1
-    end
-    
     #with single constraint block
-    if d.numConstr > 0 
-        prepare_reeval_hess(d.lag_tt)
-        j=1
-        @simd for i=d.lag_start:length(d.pvals)
-            @inbounds d.pvals[i] = lambda[j]
-            j+=1
-        end
+    prepare_reeval_hess(d.lag_tt)
+    @inbounds d.pvals[d.lag_start-1] = obj_factor 
 
-        hess_reverse(d.lag_tt,x,d.pvals,1.0)
-        @simd for j=1:length(d.lag_tt.hess)
-            @inbounds H[m] = d.lag_tt.hess[j]
-            m+=1
-        end
+    j=1
+    @simd for i=d.lag_start:length(d.pvals)
+        @inbounds d.pvals[i] = lambda[j]
+        j+=1
     end
+    @assert (j-1) == d.numConstr 
+    hess_reverse(d.lag_tt,x,d.pvals,1,H)
     #end with single constraint block
 
     @timing true d.eval_hesslag_time += toq()
