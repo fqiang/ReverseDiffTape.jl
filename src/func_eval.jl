@@ -1,13 +1,10 @@
 
 #forward evaluation for a scalar function
-function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector{V})
-    tt = tape.tt
-    idx = one(I)
-    
-    stk = tape.stk
+function forward_pass_0ord{I,V}(ttstart::I, ttend::I, tt::Vector{I}, vvals::Vector{V}, pvals::Vector{V}, stk::Vector{Float64})
+    idx = ttstart
     stklen = zero(I)
     
-    @inbounds while(idx <= length(tt))
+    @inbounds while(idx < ttend)
         ntype = tt[idx]
         # @show ntype
         # @show stklen, stk
@@ -90,10 +87,11 @@ function forward_pass_0ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
         #     @assert false
         end
     end
+    @assert idx == ttend + 1
     return stk[1]
 end
 
 ## Interface method
-function feval{I,V}(tape::Tape{I,V}, vvals::Array{V,1}, pvals::Array{V,1})
-    return forward_pass_0ord(tape,vvals,pvals)
+function feval{I,V}(ts::I, te::I, tt::Vector{I}, vvals::Vector{V}, pvals::Vector{V}, stk::Vector{V})
+    return forward_pass_0ord(ts, te, tt, vvals,pvals, stk)
 end

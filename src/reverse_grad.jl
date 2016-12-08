@@ -2,15 +2,12 @@
 # forward pass on the tape tt, to build ss stack
 
 #forward pass on the scalar function
-function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector{V})
-    tt = tape.tt
-    idx = one(I)
-    stk = tape.stk
-    vals = tape.vals
+function forward_pass_1ord{I,V}(ttstart::I, ttend::I, tt::Vector{I}, vvals::Vector{V}, pvals::Vector{V}, stk::Vector{V}, vals::Vector{V})
+    idx = ttstart
     vallen = zero(I)
     stklen = zero(I)
 
-   @inbounds while(idx <= length(tt))
+    @inbounds while idx <= ttend
         ntype = tt[idx]
         # @show ntype
         if ntype == TYPE_P
@@ -112,24 +109,21 @@ function forward_pass_1ord{I,V}(tape::Tape{I,V}, vvals::Vector{V}, pvals::Vector
         #     @assert false
         end
     end
-    @assert stklen == 1 && vallen + 1 == tape.nnode
-    @inbounds ret = vals[vallen + 1] = stk[stklen]
-    return ret
+    @assert stklen == 1 &&  idx == (ttend + 1)
+    vallen+=1
+    vals[vallen] = stk[stklen]
+    return vallen
 end
 
-function reverse_pass_1ord{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{V},start::I, g::Vector{V}) 
-    tt = tape.tt
-    idx = length(tt)
-    vals = tape.vals
-    vallen = tape.nnode - 1
-    imm = tape.imm
-    
-    adjs = tape.stk
+function reverse_pass_1ord{I,V}(ttstart::I, ttend::I, tt::Vector{I},vvals::Vector{V}, pvals::Vector{V}, vallen::I, vals::Vector{V}, stk::Vector{V}, imm::Vector{V}, start::I, g::Vector{V}) 
+    idx = ttend
+    vallen -= 1
+    adjs = stk
     adjlen = one(I)
     @inbounds adjs[adjlen] = one(V) #initial value
 
     i = start
-    @inbounds while idx > 0
+    @inbounds while idx > ttstart
         ntype = tt[idx]
         # @show i, start, ntype, idx
         # @show ntype, vallen , adjlen
@@ -247,26 +241,22 @@ function reverse_pass_1ord{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{
             @assert false
         end
     end
-    @assert idx == 0 && adjlen == 0 && vallen == 0
-    @assert (i-start) == tape.nzg  "$i $start $(tape.nzg) $(tape.nvnode)"
-    nothing
+    @assert idx == (ttstart-1) && adjlen == 0 && vallen == 0
+    nzg = i - start
+    return nzg
 end
 
-function reverse_pass_1ord_dense{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::Vector{V}, g::Vector{V})  #repeated indicies
-    # @show imm
-    # assert(length(imm) == tape.nnode -1)
-    tt = tape.tt
-    idx = length(tt)
-    vals = tape.vals
-    vallen = tape.nnode - 1
-    imm = tape.imm
-    
-    adjs = tape.stk
+
+
+function reverse_pass_1ord_dense{I,V}(ttstart::I, ttend::I, tt::Vector{I}, vvals::Vector{V}, pvals::Vector{V}, vallen::I, vals::Vector{V}, stk::Vector{V}, imm::Vector{V}, g::Vector{V}) 
+    idx = ttend
+    vallen -= 1
+    adjs = stk
     adjlen = one(I)
     @inbounds adjs[adjlen] = one(V) #initial value
 
     
-    @inbounds while idx > 0
+    @inbounds while idx > ttstart
         ntype = tt[idx]
         # @show ntype, vallen , adjlen
         @inbounds adj = adjs[adjlen]
@@ -382,24 +372,16 @@ function reverse_pass_1ord_dense{I,V}(tape::Tape{I,V},vvals::Vector{V}, pvals::V
             @assert false
         end
     end
-    @assert idx == 0 
-    @assert adjlen == 0
-    @assert vallen == 0
+    @assert idx == (ttstart-1) && adjlen == 0 && vallen == 0 "$idx $adjlen $vallen"
     
     nothing
 end
 
 
-function grad_struct{I,V}(tape::Tape{I,V}, iJ::Vector) #repeated indexes, in reverse tracing order
-    if tape.nzg!=-1
-        return tape.nzg
-    end
-    tt = tape.tt
-    idx = length(tt)
-    start = length(iJ) + 1
-    append!(iJ,zeros(tape.nvnode)) 
+function grad_struct{I}(ttstart::I, ttend::I, tt::Vector{I}, start::I, iJ::Vector{I}) #repeated indexes, in reverse tracing order
+    idx = ttend
     i = start
-    @inbounds while(idx > 0)
+    @inbounds while idx > ttstart
         ntype = tt[idx]
         # @show i, start, ntype,idx
         if ntype == TYPE_P
@@ -424,22 +406,28 @@ function grad_struct{I,V}(tape::Tape{I,V}, iJ::Vector) #repeated indexes, in rev
         #     @assert false
         end
     end
-    tape.nzg = i - start
-    @assert tape.nzg == tape.nvnode == length(iJ) - start + 1 "$(tape.nzg) $i $start $(tape.nvnode) $(length(iJ))"
-    return tape.nzg
+    nzg = i - start
+    @assert idx == (ttstart-1)
+    return nzg
 end
 
 #Interface function
-function grad_structure{I,V}(tape::Tape{I,V}, iJ::Vector{I})  
-    return grad_struct(tape, iJ)
+function grad_structure{I}(ts::I, te::I, tt::Vector{I}, start::I, iJ::Vector{I})  
+    nz = grad_struct(ts, te, tt, start, iJ)
+    # @assert tape.nzg == tape.nvnode  "$(tape.nzg) $i $start $(tape.nvnode) $(length(iJ))"
+    return nz
 end
 
-function grad_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, start::I, g::Vector{V}) #sparse version
-    forward_pass_1ord(tape,vvals,pvals)
-    reverse_pass_1ord(tape,vvals,pvals,start,g) 
+function grad_reverse{I,V}(ts::I, te::I, tt::Vector{I},vvals::Vector{V},pvals::Vector{V}, vals::Vector{V},stk::Vector{V}, imm::Vector{V}, start::I,g::Vector{V}) #sparse version
+    vallen = forward_pass_1ord(ts,te, tt, vvals, pvals, stk, vals)
+    # @assert vallen == tape.nnode 
+    nz = reverse_pass_1ord(ts,te,tt, vvals, pvals, vallen, vals, stk, imm, start, g) 
+    return nz
 end
 
-function grad_reverse_dense{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, g::Vector{V}) #sparse version
-    forward_pass_1ord(tape,vvals,pvals)
-    reverse_pass_1ord_dense(tape,vvals,pvals,g) 
+function grad_reverse_dense{I,V}(ts::I, te::I, tt::Vector{I},vvals::Vector{V},pvals::Vector{V}, vals::Vector{V},stk::Vector{V}, imm::Vector{V}, g::Vector{V}) #sparse version
+    fill!(g,0.0)
+    vallen = forward_pass_1ord(ts,te,tt, vvals,pvals, stk, vals)
+    # @assert vallen == tape.nnode 
+    reverse_pass_1ord_dense(ts,te,tt, vvals, pvals, vallen, vals, stk, imm, g) 
 end

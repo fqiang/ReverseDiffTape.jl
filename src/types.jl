@@ -27,33 +27,40 @@ const TYPE_O5 = 7
 const TYPE_O6 = 8
 const TYPE_O7 = 9
 
+type HessStorage{I,V}
+    bh_type::I
+    gnvar::I
+    # nzh::I
+    bhi::Vector{Vector{I}}
+    bhv::Vector{Vector{V}}
+    bh_idxes::Vector{I}
+end
+
+function call{I,V}(::Type{HessStorage{I,V}}, bhlen::I, gnvar::I;bh_type::I=1) 
+    hs = HessStorage{I,V}(bh_type, gnvar, Vector{Vector{I}}(bhlen), Vector{Vector{V}}(bhlen), Vector{I}(bhlen))
+    for i=1:bhlen
+        @inbounds hs.bhi[i] = Vector{I}()
+        @inbounds hs.bhv[i] = Vector{V}()
+    end
+    fill!(hs.bh_idxes,0)
+    return hs
+end
+
 type Tape{I,V}
     tt::Vector{I}
     tr::Vector{I}
+    maxoperands::I
     nvar::I
     nvnode::I
     nnode::I
-    maxoperands::I
-    depth::I
     immlen::I
-
-    nzg::I
-    nzh::I
-
-    #bh
-    bh_type::I # 0 - two vector - 1 dict
-    bhi::Vector{Vector{I}}
-    bhv::Vector{Vector{V}}
-    bh_idxes::Vector{I}   #current horizontal indicies
+    depth::I
     
-    stk::Vector{V}
-    vals::Vector{V}
-    imm::Vector{V}
+    # nzg::I
 
     # timing stat
     debug::Bool
     enable_timing_stats::Bool
-    ep_reverse_times::Vector{V}
     ep_forward_time::V
     ep_recovery_time::V
     ep_structure::V
@@ -61,99 +68,33 @@ type Tape{I,V}
     ep_findnz::V
     ep_n::I
 
-
-    function Tape(stk::Vector{V}, vals::Vector{V}, imm::Vector{V}; tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=false)
+    function Tape(tt::Vector{I}, tr::Vector{I}, mxn::I, gnvar::I, vnodes::I, nnodes::I, immlen::I, depth::I; with_timing=false, with_debug=false)
         tape = new(
-            tt,  #tt
-            Vector{I}(), #reverse order level trace, tr vector
-            zero(I),zero(I),zero(I),zero(I),zero(I),zero(I),
+            tt, tr, mxn, gnvar, vnodes, nnodes, immlen, depth,
             
-            -one(I),      #grad indicator
-            -one(I),      #hess indicator
-
-            bh_type, #bh_type
-            Vector{Vector{I}}(),
-            Vector{Vector{V}}(),
-            Vector{I}(),    #current horizontal indicies
-            
-            stk, 
-            vals,
-            imm,
-            
-            with_debug, with_timing,Vector{V}(), zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
+            # -one(I),      #grad indicator
+             
+            with_debug, with_timing, zero(V), zero(V), zero(V), zero(V), zero(V), zero(I) #timing stat
             )
         finalizer(tape, tape_cleanup)
         return tape
     end
-end
 
-function tape_cleanup{I,V}(tape::Tape{I,V})
-    #output timing 
-    @timing tape.enable_timing_stats begin
-        f = open("ep_reverse_times.txt","w")
-        writedlm(f,tape.ep_reverse_times)
-        close(f)
-
-        f = open("ep_forward_time.txt","w")
-        writedlm(f, tape.ep_forward_time)
-        close(f)
-
-        f = open("ep_recovery_time.txt","w")
-        writedlm(f, tape.ep_recovery_time)
-        close(f)
-        
-        f = open("ep_n.txt","w")
-        writedlm(f,tape.ep_n)
-        close(f)
-
-        f = open("ep_structure.txt","w")
-        writedlm(f, tape.ep_structure)
-        close(f)
-
-        f = open("ep_structure_recovery.txt","w")
-        writedlm(f, tape.ep_structure_recovery)
-        close(f)
-
-        f = open("tt.txt","w")
-        writedlm(f, tape.tt)
-        close(f)
-
-        f = open("tr.txt","w")
-        writedlm(f, tape.tr)
-        close(f)
-
-        f = open("ep_findnz.txt","w")
-        writedlm(f, tape.ep_findnz)
-        close(f)
-
-        if tape.bh_type == 1
-            f = open("ep_bhi.txt","w")
-            v = Vector{I}(length(tape.bhi))
-            for i =1:length(tape.bhi)
-                v[i] = length(tape.bhi[i])
-                for j = 1:length(tape.bhi[i])
-                    write(f, "$(tape.bhi[i][j]) ")
-                end
-                write(f,"\n")
-            end
-            close(f)
-
-            f = open("ep_num_edges.txt","w")
-            writedlm(f, v)
-            close(f)
-        end
+    function Tape()
+        return new(Vector{I}(),Vector{I}(),0,0,0,0,0,0,
+            false,false, zero(V), zero(V), zero(V), zero(V), zero(V), zero(I))
     end
 end
 
-function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
-    tt = tape.tt
-    tr = tape.tr
+function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
+    @assert length(tr) == 0
     idx = one(I)
     mxn = one(I)
     mxn_times = one(I)
     vmax = zero(I)
     vnodes = zero(I)
     nnodes = zero(I)
+    immlen = zero(I)
     n = [0,0,0,0,0,0,0,0,0]
 
     @inbounds while idx <= length(tt)
@@ -214,14 +155,10 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
         end
         # @show vmax
     end
-    tape.maxoperands = mxn
-    tape.nvar = gnvar
-    tape.nvnode = vnodes
-    tape.nnode = nnodes
-    
-    @assert gnvar >= vmax
     @assert idx == length(tt) + 1
-    # @show n
+    @assert gnvar >= vmax && sum(n) == nnodes
+
+    immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
     
     #updating ID
     nid = gnvar
@@ -243,7 +180,7 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
             tt[idx+1] = nid
             num = tt[idx+3]
             istklen = length(istk)
-            append!(tape.tr,sub(istk,istklen-num+1:istklen))
+            append!(tr,sub(istk,istklen-num+1:istklen))
             resize!(istk,istklen-num)
             push!(istk, nid)
             idx += 5
@@ -251,14 +188,14 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
         elseif ntype == TYPE_O1
             nid += 1
             tt[idx+1] = nid
-            push!(tape.tr,pop!(istk))
+            push!(tr,pop!(istk))
             push!(istk,nid)
             idx += 5
 
         elseif ntype == TYPE_O2
             nid += 1
             tt[idx+1] = nid
-            push!(tape.tr,pop!(istk))
+            push!(tr,pop!(istk))
             push!(istk,nid)
             idx += 5
 
@@ -277,14 +214,14 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
         elseif ntype == TYPE_O5
             nid += 1
             tt[idx+1] = nid
-            push!(tape.tr,pop!(istk))
+            push!(tr,pop!(istk))
             push!(istk,nid)
             idx += 5            
 
         elseif ntype == TYPE_O6
             nid += 1
             tt[idx+1] = nid
-            push!(tape.tr,pop!(istk))
+            push!(tr,pop!(istk))
             push!(istk,nid)
             idx += 5
 
@@ -297,27 +234,15 @@ function tape_analysize{I,V}(tape::Tape{I,V}, gnvar::I, with_hess_mem::Bool)
             @assert false
         end
     end
-    tape.immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
-
-    if with_hess_mem 
-        @assert tape.bh_type == 1
-        bhlen = nid
-        tape.bhi = Vector{Vector{Int}}(bhlen)
-        tape.bhv = Vector{Vector{Float64}}(bhlen)
-        for i=1:bhlen
-            @inbounds tape.bhi[i] = Vector{Int}()
-            @inbounds tape.bhv[i] = Vector{Float64}()
-        end
-        tape.bh_idxes = zeros(Int,bhlen)  
-        #timing vector for ep reverse
-        @timing tape.enable_timing_stats tape.ep_reverse_times = zeros(Float64, bhlen)
-    end
+    @assert length(istk) == 1 && idx == length(tt) + 1
+    push!(tr,pop!(istk))
+    @assert length(tr) == nnodes
     
-    # verification
-    @assert length(tape.tr) == tape.nnode-1  #root node is not on tr
+    # @show nid, mxn, gnvar, vnodes, nnodes, immlen
+    return nid, mxn, gnvar, vnodes, nnodes, immlen
 end
 
-function resizeWorkingMemory{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::Vector{Tape{I,V}})
+function getMaxWorkingSize{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::Vector{Tape{I,V}})
     mx_vallen = max(obj_tt.nnode,lag_tt.nnode)
     mx_depth  = max(obj_tt.depth,lag_tt.depth)
     mx_ops    = max(obj_tt.maxoperands,lag_tt.maxoperands)
@@ -330,16 +255,20 @@ function resizeWorkingMemory{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::
         mx_depth = max(mx_depth,cons_tt[i].depth)
         mx_ops = max(mx_ops,cons_tt[i].maxoperands)
     end
-    resize!(obj_tt.stk, mx_depth + mx_ops)
-    resize!(obj_tt.vals, mx_vallen)
-    resize!(obj_tt.imm, mx_immlen)
-    # @show mx_vallen, mx_depth, mx_ops, mx_immlen, length(obj_tt.vals), length(obj_tt.stk), length(obj_tt.imm)
+    return mx_vallen, mx_depth, mx_ops, mx_immlen
+end
 
-    for i = 1:length(cons_tt)
-        @assert length(cons_tt[i].imm) == length(obj_tt.imm) == length(lag_tt.imm)
-        @assert length(cons_tt[i].stk) == length(obj_tt.stk) == length(lag_tt.stk) 
-        @assert length(cons_tt[i].vals) == length(obj_tt.vals) == length(lag_tt.vals)
+function resizeHessStorage{I,V}(hs::HessStorage{I,V},bhlen::I,gnvar::I)
+    @assert hs.bh_type == 1
+    resize!(hs.bhi,bhlen)
+    resize!(hs.bhv,bhlen)
+    hs.gnvar = gnvar
+    for i=1:bhlen
+        @inbounds hs.bhi[i] = Vector{Int}()
+        @inbounds hs.bhv[i] = Vector{Float64}()
     end
+    resize!(hs.bh_idxes,bhlen)
+    fill!(hs.bh_idxes,0)
 end
 
 ##########################################################################################
@@ -349,25 +278,73 @@ end
 #
 ##########################################################################################
 
-function tapeBuilderNoHess{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
-    @assert length(tape.tt)==0
-    tape_builder(expr,tape, pvals)
-    tape_analysize(tape, gnvar, false)
+function tapeBuilderNoHess{I,V}(expr::Expr, pvals::Vector{V}, gnvar::I)
+    depth = [zero(I)]
+    tt = Vector{I}()
+    tr = Vector{I}()
+    tape_builder(expr,tt, pvals,depth)
+    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, depth[1])
+    return tape
 end
 
-function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
-    @assert length(tape.tt)==0
-    tape_builder(expr,tape, pvals)
-    tape_analysize(tape, gnvar, true)
-end
-
-function mergeTapes{I,V}(tape::Tape{I,V}, obj_tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I)
-    @assert length(tape.tt) == 0
+function appendMultParam{I,V}(tape::Tape{I,V},pholder::Vector{I})
     tt = tape.tt
-    mxd = zero(I)
+    push!(tt, TYPE_O1)
+    push!(tt, -1)
+    push!(tt, S_TO_OC[:*])
+    push!(tt, -2)
+    push!(pholder,length(tt))
+    push!(tt, TYPE_O1)
+end
+
+function appendTapeMultParam{I,V}(to::Tape{I,V}, from::Tape{I,V}, pvals::Vector{V},ttstarts::Vector{I},ttends::Vector{I},trends::Vector{I},pholder::Vector{I})
+    to.maxoperands = max(to.maxoperands,from.maxoperands)
+    @assert to.nvar == from.nvar
+    tt = to.tt
+    tr = to.tr
+    to.nvnode = max(to.nvnode, from.nvnode)
+    to.nnode = max(to.nnode,from.nnode)
+    to.immlen = max(to.immlen, from.immlen)
+    to.depth = max(to.depth,from.depth)
+    
+    push!(ttstarts, length(tt)+1)
+    append!(to.tt, from.tt)
+    push!(ttends,   length(tt))
+    append!(to.tr, from.tr)
+    push!(trends,   length(tr))
+
+    push!(tt, TYPE_O1)
+    push!(tt, -1)
+    push!(tt, S_TO_OC[:*])
+    push!(tt, -2)
+    push!(pholder,length(tt))
+    push!(tt, TYPE_O1)
+end
+
+function buildSumTape{I,V}(tt::Vector{I}, mx_depth::I, n::I, gnvar::I, hs::HessStorage{I,V})
+    tr = Vector{I}()
+    if n > 1
+        push!(tt, TYPE_O)
+        push!(tt, -1)
+        push!(tt, S_TO_OC[:+])
+        push!(tt, n)
+        push!(tt, TYPE_O)
+        mx_depth += 1
+    end
+    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, mx_depth)
+    resizeHessStorage(hs,nid,gnvar)
+    return tape
+end
+
+function mergeTapes{I,V}(obj_tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I,hs::HessStorage{I,V})
+    tt = Vector{I}()
+    tr = Vector{I}()
+    mx_depth = zero(I)
     
     #objective
-    mxd = max(obj_tape.depth,mxd)
+    mx_depth = max(obj_tape.depth,mx_depth)
     append!(tt, obj_tape.tt)
     push!(pvals,1.0)
 
@@ -379,7 +356,7 @@ function mergeTapes{I,V}(tape::Tape{I,V}, obj_tape::Tape{I,V}, tapes::Vector{Tap
 
     #constraints
     for i=1:length(tapes)
-        mxd = max(tapes[i].depth,mxd)
+        mx_depth = max(tapes[i].depth, mx_depth)
         append!(tt, tapes[i].tt)
         push!(pvals,1.0)
 
@@ -399,8 +376,11 @@ function mergeTapes{I,V}(tape::Tape{I,V}, obj_tape::Tape{I,V}, tapes::Vector{Tap
         push!(tt, TYPE_O)
     end
 
-    tape.depth = mxd
-    tape_analysize(tape, gnvar, true)
+    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, mx_depth)
+    resizeHessStorage(hs,nid,gnvar)
+
+    return tape
 end
 
 type B_NODE{I,V}
@@ -409,12 +389,12 @@ type B_NODE{I,V}
     pval::V
 end
 
-function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
+function tape_builder{I,V}(expr,tt::Vector{I}, pvals::Vector{V}, depth::Vector{I}, d::I=0)
     # @show expr
     # @show d
-    tt = tape.tt
+    @assert length(depth) == 1
     d += 1
-    tape.depth = max(tape.depth,d)
+    depth[1] = max(depth[1],d)
 
     if isa(expr, Real)
         return B_NODE(0,0,expr)
@@ -428,9 +408,9 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
         @assert typeof(op)==Symbol
         if (n==1 || n==0) && op==:+ 
             #simpliy the expression eliminate 1-ary + node
-            return tape_builder(expr.args[2],tape,pvals,d)
+            return tape_builder(expr.args[2],tt,pvals,depth,d)
         elseif op == :- && n==1
-            node = tape_builder(expr.args[2],tape,pvals,d)
+            node = tape_builder(expr.args[2],tt,pvals,depth,d)
 
             if node.t == 0
                 return B_NODE(0,0,-node.pval)
@@ -452,7 +432,7 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                 @assert false
             end
         elseif n == 1
-            node = tape_builder(expr.args[2],tape,pvals,d)
+            node = tape_builder(expr.args[2],tt,pvals,depth,d)
             if node.t == 0
                 pval = eval(op)(node.pval)
                 return B_NODE(0,0,pval)
@@ -474,8 +454,8 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
                 @assert false
             end
         elseif n == 2
-            ln = tape_builder(expr.args[2],tape,pvals,d)
-            rn = tape_builder(expr.args[3],tape,pvals,d)
+            ln = tape_builder(expr.args[2],tt,pvals,depth,d)
+            rn = tape_builder(expr.args[3],tt,pvals,depth,d)
             if ln.t == rn.t == 0
                 pval = eval(op)(ln.pval,rn.pval)
                 return B_NODE(0,0,pval)
@@ -560,7 +540,7 @@ function tape_builder{I,V}(expr,tape::Tape{I,V}, pvals::Vector{V}, d::I=0)
             pval = zero(V)
             pnode = zero(I)
             for i in 2:length(expr.args)
-                node = tape_builder(expr.args[i],tape,pvals,d)
+                node = tape_builder(expr.args[i],tt,pvals,depth,d)
                 if node.t == 0 
                     pnode==zero(I)? pval = node.pval : ( op == :+? pval += node.pval : pval *= node.pval )
                     pnode += 1
@@ -799,6 +779,61 @@ function Base.show(io::IO,m::AD)
     print(io, m.data)
 end
 
+
+
+function tape_cleanup{I,V}(tape::Tape{I,V})
+    #output timing 
+    @timing tape.enable_timing_stats begin
+        f = open("ep_forward_time.txt","w")
+        writedlm(f, tape.ep_forward_time)
+        close(f)
+
+        f = open("ep_recovery_time.txt","w")
+        writedlm(f, tape.ep_recovery_time)
+        close(f)
+        
+        f = open("ep_n.txt","w")
+        writedlm(f,tape.ep_n)
+        close(f)
+
+        f = open("ep_structure.txt","w")
+        writedlm(f, tape.ep_structure)
+        close(f)
+
+        f = open("ep_structure_recovery.txt","w")
+        writedlm(f, tape.ep_structure_recovery)
+        close(f)
+
+        f = open("tt.txt","w")
+        writedlm(f, tape.tt)
+        close(f)
+
+        f = open("tr.txt","w")
+        writedlm(f, tape.tr)
+        close(f)
+
+        f = open("ep_findnz.txt","w")
+        writedlm(f, tape.ep_findnz)
+        close(f)
+
+        if tape.bh_type == 1
+            f = open("ep_bhi.txt","w")
+            v = Vector{I}(length(tape.bhi))
+            for i =1:length(tape.bhi)
+                v[i] = length(tape.bhi[i])
+                for j = 1:length(tape.bhi[i])
+                    write(f, "$(tape.bhi[i][j]) ")
+                end
+                write(f,"\n")
+            end
+            close(f)
+
+            f = open("ep_num_edges.txt","w")
+            writedlm(f, v)
+            close(f)
+        end
+    end
+end
 
 
 

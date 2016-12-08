@@ -79,9 +79,12 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     numConstr::Int
     lag_start::Int
     pvals::Vector{Float64}
-    obj_tt::Tape{Int,Float64}
     lag_tt::Tape{Int,Float64}
-    constr_tt::Vector{Tape{Int,Float64}}
+    ttstarts::Vector{Int}
+    ttends::Vector{Int}
+    trends::Vector{Int}
+    hs::HessStorage{Int,Float64}
+    
     nl_idxes::Vector{Int}
     init::Int
     enable_timing_stats::Bool
@@ -93,6 +96,11 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     laghess_I::Vector{Int}
     laghess_J::Vector{Int}
     laghess_nnz::Int
+
+    #working array
+    stk::Vector{Float64}
+    vals::Vector{Float64}
+    imm::Vector{Float64}
 
     # timers
     tape_build::Float64
@@ -109,28 +117,29 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
 end
 
 function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numConstr;with_timing=false)
-    stk = Vector{Float64}()
-    vals = Vector{Float64}()
-    imm = Vector{Float64}()
     e = TapeNLPEvaluator(nlpe, 
         numVar,numConstr,0,
         Vector{Float64}(), #parameter values
         
-        Tape{Int,Float64}(stk,vals,imm), #objective tape
-        Tape{Int,Float64}(stk,vals,imm), #lag_tt
-        Vector{Tape{Int,Float64}}(),  #constraints tape
+        Tape{Int,Float64}(), #lag_tt
+        Vector{Int}(),
+        Vector{Int}(),
+        Vector{Int}(),
+        HessStorage{Int,Float64}(0,-1),
 
         Vector{Int}(), #nl_idxes
         -1, #init
         with_timing,
         
         Vector{Int}(), Vector{Int}(),-1, #Jacobian
-        
         Vector{Int}(), Vector{Int}(),-1, #Hessian
 
+        Vector{Float64}(),Vector{Float64}(),Vector{Float64}(), #working array
+
+
         0.0, 0.0, 0.0, 0.0,    #timer
-        0.0, 0.0, 0.0, 0.0     #
-        ,0.0                    #jump timer
+        0.0, 0.0, 0.0, 0.0     
+        ,0.0                    
         ) 
     finalizer(e, evaluator_cleanup)
     return e  
@@ -175,51 +184,91 @@ end
 
 function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector{Symbol})
     @assert d.init == -1
-    # @show "TapeNLPEvaluator - initialize"
+    # @assert length(d.pvals) == length(d.ttstarts) == length(d.ttends) == length(d.trends) == 0  ## assume no values in pvals
     jd = d.jd
     gnvar = MathProgBase.numvar(jd.m)
 
     @timing d.enable_timing_stats tic()
     MathProgBase.initialize(jd,[:ExprGraph])
     @timing d.enable_timing_stats d.jd_init += toq()
-    # @show "JuMP evaluator initialize ", d.jd_init
-
-    #let's building up the tape
-    objexpr = MathProgBase.obj_expr(jd)
-    # @show objexpr
     
-    #@assert length(d.pvals) == 0  ## assume no values in pvals
-    # @show "build objective"
-    @timing d.enable_timing_stats tic()
-    tapeBuilderNoHess(objexpr,d.obj_tt,d.pvals, gnvar)
-    @timing d.enable_timing_stats d.tape_build += toq()
-    # @show d.pvals
+    objexpr = MathProgBase.obj_expr(jd)
 
-    #compute gradient structure for f
-    # grad_structure(d.obj_tt)
+#indexing approach
+    pholder = Vector{Int}()
+    bigT = tapeBuilderNoHess(objexpr,d.pvals,gnvar)
+    push!(d.ttstarts, 1)
+    push!(d.ttends,length(bigT.tt))
+    push!(d.trends,length(bigT.tr))
+    appendMultParam(bigT,pholder)   
 
-    for i =1:d.numConstr
+    ntts = 1
+    obj_nvnode = bigT.nvnode
+
+    for i = 1:d.numConstr
         conexpr = MathProgBase.constr_expr(jd,i)
         if !MathProgBase.isconstrlinear(jd,i) 
             push!(d.nl_idxes,i)
         end
-        j = length(conexpr.args)==3?1:3
-        tt = Tape{Int,Float64}(d.obj_tt.stk,d.obj_tt.vals,d.obj_tt.imm)
+        j = length(conexpr.args) == 3?1:3
         @timing d.enable_timing_stats tic()
-        tapeBuilderNoHess(conexpr.args[j],tt,d.pvals, gnvar)
+        tt = tapeBuilderNoHess(conexpr.args[j],d.pvals, gnvar)
         @timing d.enable_timing_stats d.tape_build += toq()
-        push!(d.constr_tt,tt)
+        appendTapeMultParam(bigT, tt, d.pvals,d.ttstarts,d.ttends,d.trends,pholder)
+        ntts +=1
     end
+    @assert length(pholder) == 1+d.numConstr
 
-    #build single lag
-    d.lag_start = length(d.pvals) + 2
-    mergeTapes(d.lag_tt,d.obj_tt, d.constr_tt,d.pvals, gnvar)
+    j = length(d.pvals)
+    d.lag_start = j + 2
+    for i=1:length(pholder)
+        @assert bigT.tt[pholder[i]] == -2
+        bigT.tt[pholder[i]] = j + i
+    end
+    append!(d.pvals,ones(Float64,ntts))
+    @assert length(d.pvals) == (d.lag_start-1+d.numConstr)
+    d.lag_tt = buildSumTape(bigT.tt, bigT.depth,ntts,gnvar,d.hs)
+    @assert length(d.ttstarts) == length(d.ttends) == length(d.trends) == (1 + d.numConstr)
+##### otherwise
+    
+    # @timing d.enable_timing_stats tic()
+    # d.obj_tt = tapeBuilderNoHess(objexpr,d.pvals, gnvar)
+    # @timing d.enable_timing_stats d.tape_build += toq()
+    # # @show d.pvals
+
+    # for i =1:d.numConstr
+    #     conexpr = MathProgBase.constr_expr(jd,i)
+    #     if !MathProgBase.isconstrlinear(jd,i) 
+    #         push!(d.nl_idxes,i)
+    #     end
+    #     j = length(conexpr.args)==3?1:3
+    #     @timing d.enable_timing_stats tic()
+    #     tt = tapeBuilderNoHess(conexpr.args[j],d.pvals, gnvar)
+    #     @timing d.enable_timing_stats d.tape_build += toq()
+    #     push!(d.constr_tt,tt)
+    # end
+
+    # #build single lag
+    # d.lag_start = length(d.pvals) + 2
+    # d.lag_tt = mergeTapes(d.obj_tt, d.constr_tt,d.pvals, gnvar, d.hs)
     @show d.lag_tt.depth
-    @assert (d.lag_start + length(d.constr_tt) - 1) == length(d.pvals)
+    @assert (d.lag_start + d.numConstr - 1) == length(d.pvals)  "$(length(d.pvals)) $(d.numConstr) $(d.lag_start)"
     #end building single lag
 
-    resizeWorkingMemory(d.obj_tt,d.lag_tt,d.constr_tt)
-    
+    resize!(d.stk, d.lag_tt.depth + d.lag_tt.maxoperands)
+    resize!(d.vals, d.lag_tt.nnode)
+    resize!(d.imm, d.lag_tt.immlen)
+
+
+    # mx_vallen, mx_depth, mx_ops, mx_immlen = getMaxWorkingSize(d.obj_tt,d.lag_tt,d.constr_tt)
+    # @assert mx_vallen == d.lag_tt.nnode && mx_depth == d.lag_tt.depth && mx_immlen == d.lag_tt.immlen && mx_ops == d.lag_tt.maxoperands
+
+
+    # resize!(d.jac_I,(d.lag_tt.nvnode - d.obj_tt.nvnode))
+    # resize!(d.jac_J,(d.lag_tt.nvnode - d.obj_tt.nvnode))
+
+    resize!(d.jac_I,(d.lag_tt.nvnode - obj_nvnode))
+    resize!(d.jac_J,(d.lag_tt.nvnode - obj_nvnode))    
 
     # @show "TapeNLPEvaluator initialize ",d.tape_build
     d.init = 1  #set initialized 
@@ -231,7 +280,10 @@ MathProgBase.features_available(d::TapeNLPEvaluator) = [:Grad, :Jac, :Hess]
 #evaluate the objective function given on iterate x
 function MathProgBase.eval_f(d::TapeNLPEvaluator, x)
     @timing d.enable_timing_stats tic()
-    v = feval(d.obj_tt,x,d.pvals)
+    tt = d.lag_tt.tt
+    @inbounds ts = d.ttstarts[1]
+    @inbounds te = d.ttends[1]    
+    v = feval(ts,te,tt,x,d.pvals,d.stk)
     @timing d.enable_timing_stats d.eval_f_time += toq()
     
     return v
@@ -239,11 +291,12 @@ end
 
 #evaluate the objective gradient on given iterate x. Results is set to g
 function MathProgBase.eval_grad_f(d::TapeNLPEvaluator, g, x)
-    fill!(g,0.0)
-        
-    @timing d.enable_timing_stats tic()
-    grad_reverse_dense(d.obj_tt,x,d.pvals,g)
-    @timing d.enable_timing_stats d.eval_grad_f_time += toq()
+    # @timing d.enable_timing_stats tic()
+    tt = d.lag_tt.tt
+    @inbounds ts = d.ttstarts[1]
+    @inbounds te = d.ttends[1]
+    grad_reverse_dense(ts,te,tt,x,d.pvals,d.vals,d.stk, d.imm, g)
+    # @timing d.enable_timing_stats d.eval_grad_f_time += toq()
     
     return nothing
 end
@@ -251,8 +304,12 @@ end
 #constraint evaluation
 function MathProgBase.eval_g(d::TapeNLPEvaluator, g, x)
     @timing d.enable_timing_stats tic()
+    tt = d.lag_tt.tt
     @inbounds for i=1:d.numConstr
-        @inbounds g[i]=feval(d.constr_tt[i],x,d.pvals)
+        # @inbounds tt = d.constr_tt[i].tt
+        @inbounds ts = d.ttstarts[i+1]
+        @inbounds te = d.ttends[i+1]
+        @inbounds g[i]=feval(ts,te,tt,x,d.pvals,d.stk)
     end
     @timing d.enable_timing_stats d.eval_g_time += toq()
     
@@ -262,19 +319,22 @@ end
 
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     @assert d.jac_nnz == -1
+    @assert length(d.jac_I) == length(d.jac_J)
+    # @timing d.enable_timing_stats tic()
+    tt = d.lag_tt.tt
+    start = 1
     for i=1:d.numConstr
-        @inbounds tt_i = d.constr_tt[i]
-        @timing d.enable_timing_stats tic()
-        grad_structure(tt_i, d.jac_J)
-        @timing d.enable_timing_stats d.jac_structure_time += toq()
-        
-        v = Vector{Int}(tt_i.nzg)
-        fill!(v,i)
-        append!(d.jac_I,v) 
+        # @inbounds tt = d.constr_tt[i].tt
+        @inbounds ts = d.ttstarts[i+1]
+        @inbounds te = d.ttends[i+1]
+        nz = grad_structure(ts, te, tt, start, d.jac_J)
+        @inbounds fill!(sub(d.jac_I, start:(start+nz-1)),i) 
+        start += nz
     end
-
     d.jac_nnz = length(d.jac_I)
-    @assert length(d.jac_I) == length(d.jac_J) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
+    # @timing d.enable_timing_stats d.jac_structure_time += toq()    
+    
+    @assert length(d.jac_I) == length(d.jac_J) == (start - 1) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
     return d.jac_I, d.jac_J
 end
 
@@ -282,13 +342,16 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
     @assert d.jac_nnz != -1  #structure already computed
     @assert length(J) == d.jac_nnz
 
+    tt = d.lag_tt.tt
     j = 1
     for i = 1:d.numConstr
-        @inbounds tt_i = d.constr_tt[i]
-        @timing d.enable_timing_stats tic()
-        grad_reverse(tt_i,x,d.pvals,j,J)
-        j += tt_i.nzg
-        @timing d.enable_timing_stats d.eval_jac_g_time += toq()
+        # @inbounds tt = d.constr_tt[i].tt
+        @inbounds ts = d.ttstarts[i+1]
+        @inbounds te = d.ttends[i+1]
+        # @timing d.enable_timing_stats tic()
+        nz = grad_reverse(ts,te,tt,x,d.pvals,d.vals,d.stk,d.imm,j,J)
+        j += nz
+        # @timing d.enable_timing_stats d.eval_jac_g_time += toq()
     end
     @assert j-1 == d.jac_nnz "$j $(d.jac_nnz)"
     return
@@ -313,13 +376,15 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     @timing true tic()
       
     #with single constraints block
-    hess_structure(d.lag_tt,d.laghess_I, d.laghess_J)
+    tt = d.lag_tt.tt
+    tr = d.lag_tt.tr
+    nz = hess_structure(1, length(tt), tt, length(tr), tr, d.hs, d.laghess_I, d.laghess_J)
     #end single constraint block
     
     d.laghess_nnz = length(d.laghess_I)
     @timing true d.hesslag_structure_time += toq()
    
-    @assert d.laghess_nnz == length(d.laghess_J) == length(d.laghess_I) == d.lag_tt.nzh
+    @assert d.laghess_nnz == length(d.laghess_J) == length(d.laghess_I) == nz
     return  d.laghess_I, d.laghess_J
 end
 
@@ -335,7 +400,6 @@ function MathProgBase.eval_hesslag(
     
     @timing true tic()
     #with single constraint block
-    prepare_reeval_hess(d.lag_tt)
     @inbounds d.pvals[d.lag_start-1] = obj_factor 
 
     j=1
@@ -344,7 +408,9 @@ function MathProgBase.eval_hesslag(
         j+=1
     end
     @assert (j-1) == d.numConstr 
-    hess_reverse(d.lag_tt,x,d.pvals,1,H)
+    tt = d.lag_tt.tt
+    tr = d.lag_tt.tr
+    nz = hess_reverse(1, length(tt), tt, length(tr), tr ,x,d.pvals,d.stk, d.vals, d.imm, d.hs, 1,H)
     #end with single constraint block
 
     @timing true d.eval_hesslag_time += toq()

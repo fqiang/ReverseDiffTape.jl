@@ -23,8 +23,8 @@ end
 
 @time feval(tt,x,p)
 
-gI = Vector{Int}();
-@time grad_structure(tt,gI)
+gI = Vector{Int}(tt.nvnode);
+@time grad_structure(tt,1,gI)
 g = zeros(length(gI));
 @time  grad_reverse(tt,x,p,1,g)
 
@@ -43,9 +43,6 @@ h_J = Vector{Int}();
 @assert length(h_I) == length(h_J)
 
 h = zeros(length(h_I));
-@time hess_reverse(tt,x,p,1,h)
-
-ReverseDiffTape.prepare_reeval_hess(tt)
 @time hess_reverse(tt,x,p,1,h)
 
 

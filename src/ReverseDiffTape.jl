@@ -14,14 +14,14 @@ export @timing, @asserting,
 #types
     TYPE_V, TYPE_P, TYPE_O,
 #Objects
-    AD, AD_O, AD_P, AD_V, Tape,
+    AD, AD_O, AD_P, AD_V, Tape, HessStorage,
 #Functions
     append_array,
-    tapeBuilder, tapeBuilderNoHess,#building tape from Julia expression 
-    mergeTapes,resizeWorkingMemory,
+    tapeBuilder, tapeBuilderNoHess,appendMultParam,appendTapeMultParam,buildSumTape, #building tape from Julia expression 
+    mergeTapes,getMaxWorkingSize,resizeHessStorage,
     feval, 
     grad_reverse, grad_reverse_dense, grad_structure,
-    hess_structure, hess_reverse, reset_hess, prepare_reeval_hess,
+    hess_structure, hess_reverse, reset_hess,
     tape_report_mem
 
 
