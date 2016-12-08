@@ -1000,11 +1000,6 @@ function hess_structure{I,V}(tape::Tape{I,V}, h_I::Vector{I}, h_J::Vector{I})
     nothing
 end
 
-function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V})
-    hess_reverse(tape,vvals,pvals,1.0)
-    nothing
-end
-
 function hess_reverse{I,V}(tape::Tape{I,V},vvals::Vector{V},pvals::Vector{V}, start::I, H::Vector{V})
     #@timing tape.enable_timing_stats tape.ep_n += 1
 

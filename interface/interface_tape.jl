@@ -191,7 +191,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     #@assert length(d.pvals) == 0  ## assume no values in pvals
     # @show "build objective"
     @timing d.enable_timing_stats tic()
-    tapeBuilder(objexpr,d.obj_tt,d.pvals, gnvar)
+    tapeBuilderNoHess(objexpr,d.obj_tt,d.pvals, gnvar)
     @timing d.enable_timing_stats d.tape_build += toq()
     # @show d.pvals
 
@@ -206,7 +206,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
         j = length(conexpr.args)==3?1:3
         tt = Tape{Int,Float64}(d.obj_tt.stk,d.obj_tt.vals,d.obj_tt.imm)
         @timing d.enable_timing_stats tic()
-        tapeBuilderSimple(conexpr.args[j],tt,d.pvals, gnvar)
+        tapeBuilderNoHess(conexpr.args[j],tt,d.pvals, gnvar)
         @timing d.enable_timing_stats d.tape_build += toq()
         push!(d.constr_tt,tt)
     end

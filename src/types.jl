@@ -62,7 +62,7 @@ type Tape{I,V}
     ep_n::I
 
 
-    function Tape(stk::Vector{V}, vals::Vector{V}, imm::Vector{V}; tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=true)
+    function Tape(stk::Vector{V}, vals::Vector{V}, imm::Vector{V}; tt=Vector{I}(), with_timing=false, bh_type=1, with_debug=false)
         tape = new(
             tt,  #tt
             Vector{I}(), #reverse order level trace, tr vector
@@ -349,7 +349,7 @@ end
 #
 ##########################################################################################
 
-function tapeBuilderSimple{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
+function tapeBuilderNoHess{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
     @assert length(tape.tt)==0
     tape_builder(expr,tape, pvals)
     tape_analysize(tape, gnvar, false)
@@ -358,7 +358,7 @@ end
 function tapeBuilder{I,V}(expr::Expr,tape::Tape{I,V}, pvals::Vector{V}, gnvar::I)
     @assert length(tape.tt)==0
     tape_builder(expr,tape, pvals)
-    tape_analysize(tape, gnvar, false)
+    tape_analysize(tape, gnvar, true)
 end
 
 function mergeTapes{I,V}(tape::Tape{I,V}, obj_tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::Vector{V}, gnvar::I)
