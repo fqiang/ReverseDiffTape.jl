@@ -158,7 +158,7 @@ function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
     @assert idx == length(tt) + 1
     @assert gnvar >= vmax && sum(n) == nnodes
 
-    immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2))
+    immlen = max(5, convert(I,(mxn_times-1)*mxn_times/2)+mxn_times)
     
     #updating ID
     nid = gnvar
