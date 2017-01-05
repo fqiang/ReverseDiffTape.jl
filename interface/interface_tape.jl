@@ -230,27 +230,6 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     d.lag_tt = buildSumTape(bigT.tt, bigT.depth,ntts,gnvar,d.hs)
     @assert length(d.ttstarts) == length(d.ttends) == length(d.trends) == (1 + d.numConstr)
 ##### otherwise
-    
-    # @timing d.enable_timing_stats tic()
-    # d.obj_tt = tapeBuilderNoHess(objexpr,d.pvals, gnvar)
-    # @timing d.enable_timing_stats d.tape_build += toq()
-    # # @show d.pvals
-
-    # for i =1:d.numConstr
-    #     conexpr = MathProgBase.constr_expr(jd,i)
-    #     if !MathProgBase.isconstrlinear(jd,i) 
-    #         push!(d.nl_idxes,i)
-    #     end
-    #     j = length(conexpr.args)==3?1:3
-    #     @timing d.enable_timing_stats tic()
-    #     tt = tapeBuilderNoHess(conexpr.args[j],d.pvals, gnvar)
-    #     @timing d.enable_timing_stats d.tape_build += toq()
-    #     push!(d.constr_tt,tt)
-    # end
-
-    # #build single lag
-    # d.lag_start = length(d.pvals) + 2
-    # d.lag_tt = mergeTapes(d.obj_tt, d.constr_tt,d.pvals, gnvar, d.hs)
     @show d.lag_tt.depth
     @assert (d.lag_start + d.numConstr - 1) == length(d.pvals)  "$(length(d.pvals)) $(d.numConstr) $(d.lag_start)"
     #end building single lag
@@ -258,14 +237,6 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     resize!(d.stk, d.lag_tt.depth + d.lag_tt.maxoperands)
     resize!(d.vals, d.lag_tt.nnode)
     resize!(d.imm, d.lag_tt.immlen)
-
-
-    # mx_vallen, mx_depth, mx_ops, mx_immlen = getMaxWorkingSize(d.obj_tt,d.lag_tt,d.constr_tt)
-    # @assert mx_vallen == d.lag_tt.nnode && mx_depth == d.lag_tt.depth && mx_immlen == d.lag_tt.immlen && mx_ops == d.lag_tt.maxoperands
-
-
-    # resize!(d.jac_I,(d.lag_tt.nvnode - d.obj_tt.nvnode))
-    # resize!(d.jac_J,(d.lag_tt.nvnode - d.obj_tt.nvnode))
 
     resize!(d.jac_I,(d.lag_tt.nvnode - obj_nvnode))
     resize!(d.jac_J,(d.lag_tt.nvnode - obj_nvnode))    
