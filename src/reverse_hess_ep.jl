@@ -280,51 +280,105 @@ function hess_struct{I}(ttstart::I, ttend::I, tt::Vector{I}, trend::I, tr::Vecto
     nothing
 end
 
-@inline function hess_findnz{I}(bhi::Vector{Vector{I}}, nvar::I)
+@inline function hess_findnz{I,V}(bhi::Vector{Vector{I}}, idxmap::Vector{I}, HH::Vector{V}, nvar::I)
     #@timing tape.enable_timing_stats tic()
-    nz = zero(I)
+    nnz = zero(I)
     for i = 1:nvar
         @inbounds lvi = bhi[i]
         for j = 1:length(lvi)
             @inbounds v_id = lvi[j]
             if v_id <= nvar
-                nz += 1
+                nnz += 1
             end
         end
     end
+    resize!(idxmap, nnz)
+    fill!(idxmap,0)
+    resize!(HH, nnz)
     #@timing tape.enable_timing_stats tape.ep_findnz += toq()
-    return nz
+    return nnz
 end
 
-function hess_struct_recovery{I}(bhi::Vector{Vector{I}}, nvar::I, nz::I, h_I::Vector{I}, h_J::Vector{I}) 
+function hess_struct_recovery{I}(bhi::Vector{Vector{I}}, idxmap::Vector{I}, nvar::I, nnz_original::I, h_I::Vector{I}, h_J::Vector{I}) 
     #@timing tape.enable_timing_stats tic()
-    @assert length(h_I) == length(h_J)
-    pre = length(h_I)
-    start = pre + 1
-    append!(h_I, zeros(nz))
-    append!(h_J, zeros(nz))
+    @assert length(h_I) == length(h_J) 
+    @assert length(idxmap) == nnz_original
     
+    hh_I = zeros(I,nnz_original)
+    hh_J = zeros(I,nnz_original)
+    start = one(I)
     for i=1:nvar
         @inbounds lvi = bhi[i]
         for j = 1:length(lvi)
             @inbounds v_id = lvi[j]
             if v_id <= nvar
                 if v_id <= i  #assert lower trangular
-                    @inbounds h_I[start] = i
-                    @inbounds h_J[start] = v_id
+                    @inbounds hh_I[start] = i
+                    @inbounds hh_J[start] = v_id
                 else 
-                    @inbounds h_I[start] = v_id
-                    @inbounds h_J[start] = i
+                    @inbounds hh_I[start] = v_id
+                    @inbounds hh_J[start] = i
                 end
                 start += 1
             end
         end
     end
+    @assert (start - 1) == nnz_original "$start $(nnz_original)"
 
-    @assert start - pre  - 1 == nz "$start $pre $(nz)"
+    #postprocess non-repeated
+    mergedindices = zeros(I,length(hh_I))
+    mergednnz = [0]
+    mergedmap = zeros(I,length(hh_I))
+    function combine(idx1,idx2)
+        if mergedmap[idx1] == 0 && mergedmap[idx2] != 0
+            mergednnz[1] += 1
+            mergedmap[idx1] = idx2
+            mergedindices[mergednnz[1]] = idx1
+            return idx2
+        else
+            @assert mergedmap[idx2] == 0
+            mergednnz[1] += 1
+            mergedmap[idx2] = idx1
+            mergedindices[mergednnz[1]] = idx2
+            return idx1
+        end
+    end
+    Hmat = sparse(hh_I, hh_J, [i for i in 1:length(hh_I)], nvar, nvar, combine)
+    nnz_non_repeat = length(Hmat.nzval)
+    pre = length(h_I)
+    start = pre + 1
+    append!(h_I, zeros(nnz_non_repeat))
+    append!(h_J, zeros(nnz_non_repeat))
+
+    for row in 1:nvar
+        for pos in Hmat.colptr[row]:(Hmat.colptr[row+1]-1)
+            col = Hmat.rowval[pos]
+            origidx = Hmat.nzval[pos] # this is the original index of this element
+            idxmap[origidx] = pos
+            h_I[start] = row
+            h_J[start] = col
+            start += 1
+        end
+    end
+
+    for k in 1:mergednnz[1]
+        origidx = mergedindices[k]
+        mergedwith = mergedmap[origidx]
+        @assert idxmap[origidx] == 0
+        @assert idxmap[mergedwith] != 0
+        idxmap[origidx] = idxmap[mergedwith]
+    end
+
+    for i in 1:nnz_original
+        @assert idxmap[i] != 0
+    end
+
+    # @assert start - pre  - 1 == nz "$start $pre $(nz)"
     #@timing tape.enable_timing_stats tape.ep_structure_recovery += toq()
+
     nothing
 end
+
 
 
 function forward_pass_2ord{I,V}(ttstart::I, ttend::I, tt::Vector{I}, vvals::Array{V,1}, pvals::Array{V,1}, stk::Vector{V}, vals::Vector{V})
@@ -934,37 +988,46 @@ function reverse_pass_2ord{I,V}(ttstart::I, ttend::I, tt::Vector{I}, trend::I, t
 end
 
 
-@inline function hess_recovery{I,V}(bhi::Vector{Vector{I}},bhv::Vector{Vector{V}}, nvar::I, start::Int, H::Vector{V})
+@inline function hess_recovery{I,V}(bhi::Vector{Vector{I}},bhv::Vector{Vector{V}}, idxmap::Vector{I}, HH::Vector{V}, nvar::I, start::Int, H::Vector{V})
     #@timing tape.enable_timing_stats tic()
-    pre = start
+    pre = start 
     for i = 1:nvar
         @inbounds lvi = bhi[i]
         @inbounds lvv = bhv[i]
         for j = 1:length(lvi)
             @inbounds v_id = lvi[j]
             if v_id <= nvar
-                @inbounds H[start] = lvv[j]
+                @inbounds HH[start] = lvv[j]
                 start += 1
             end
         end
     end 
-    nz =  start - pre 
+    nnz =  start - pre 
+    @assert nnz == length(HH)
+
+    fill!(H,0)
+    for i = 1:nnz
+        H[idxmap[i]] += HH[i]
+    end
+
     #@timing tape.enable_timing_stats tape.ep_recovery_time += toq()
-    return nz
+    nothing
 end
+
 
 #Interface function
 function hess_structure{I,V}(ts::I, te::I,tt::Vector{I}, 
     re::I,tr::Vector{I},
-    hs::HessStorage{I,V}, h_I::Vector{I}, h_J::Vector{I})    
+    hs::HessStorage{I,V}, h_I::Vector{I}, h_J::Vector{I})
+
     hess_struct(ts,te,tt,re,tr,hs.gnvar,hs.bhi)
     @assert length(hs.bhi) == length(hs.bhv) == length(hs.bh_idxes)
     for i=1:length(hs.bhi)
         @inbounds resize!(hs.bhv[i],length(hs.bhi[i]))
     end
-    nz = hess_findnz(hs.bhi, hs.gnvar)
-    hess_struct_recovery(hs.bhi, hs.gnvar, nz, h_I, h_J)
-    return nz
+    nnz_repeat = hess_findnz(hs.bhi, hs.idxmap, hs.HH, hs.gnvar)
+    hess_struct_recovery(hs.bhi, hs.idxmap, hs.gnvar, nnz_repeat, h_I, h_J)
+    return length(h_I)
 end
 
 function hess_reverse{I,V}(ts::I, te::I, tt::Vector{I}, 
@@ -979,8 +1042,8 @@ function hess_reverse{I,V}(ts::I, te::I, tt::Vector{I},
     reverse_pass_2ord(ts, te, tt, re, tr, hs.bhi, hs.bhv, hs.bh_idxes, hs.gnvar
         ,vvals,pvals, vallen, vals, stk, imm)
     # @time recovery2(tape, tape.bhi,tape.bhv,tape.hess,tape.nvar, factor)
-    nz = hess_recovery(hs.bhi, hs.bhv, hs.gnvar, start, H)
-    return nz
+    hess_recovery(hs.bhi, hs.bhv, hs.idxmap, hs.HH, hs.gnvar, start, H)
+    nothing
 end
 
 

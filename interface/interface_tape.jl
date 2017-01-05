@@ -385,6 +385,7 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     @timing true d.hesslag_structure_time += toq()
    
     @assert d.laghess_nnz == length(d.laghess_J) == length(d.laghess_I) == nz
+    # @show "end hesslag_structure"
     return  d.laghess_I, d.laghess_J
 end
 
@@ -410,7 +411,7 @@ function MathProgBase.eval_hesslag(
     @assert (j-1) == d.numConstr 
     tt = d.lag_tt.tt
     tr = d.lag_tt.tr
-    nz = hess_reverse(1, length(tt), tt, length(tr), tr ,x,d.pvals,d.stk, d.vals, d.imm, d.hs, 1,H)
+    hess_reverse(1, length(tt), tt, length(tr), tr ,x,d.pvals,d.stk, d.vals, d.imm, d.hs, 1,H)
     #end with single constraint block
 
     @timing true d.eval_hesslag_time += toq()

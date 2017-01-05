@@ -29,15 +29,16 @@ const TYPE_O7 = 9
 
 type HessStorage{I,V}
     bh_type::I
+    idxmap::Vector{I}
+    HH::Vector{V}
     gnvar::I
-    # nzh::I
     bhi::Vector{Vector{I}}
     bhv::Vector{Vector{V}}
     bh_idxes::Vector{I}
 end
 
 function call{I,V}(::Type{HessStorage{I,V}}, bhlen::I, gnvar::I;bh_type::I=1) 
-    hs = HessStorage{I,V}(bh_type, gnvar, Vector{Vector{I}}(bhlen), Vector{Vector{V}}(bhlen), Vector{I}(bhlen))
+    hs = HessStorage{I,V}(bh_type, Vector{V}(), Vector{I}(), gnvar, Vector{Vector{I}}(bhlen), Vector{Vector{V}}(bhlen), Vector{I}(bhlen))
     for i=1:bhlen
         @inbounds hs.bhi[i] = Vector{I}()
         @inbounds hs.bhv[i] = Vector{V}()
