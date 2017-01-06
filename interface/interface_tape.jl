@@ -241,7 +241,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     resize!(d.jac_I,(d.lag_tt.nvnode - obj_nvnode))
     resize!(d.jac_J,(d.lag_tt.nvnode - obj_nvnode))    
 
-    # @show "TapeNLPEvaluator initialize ",d.tape_build
+    @show "end initialize "
     d.init = 1  #set initialized 
     nothing
 end
@@ -306,6 +306,7 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     # @timing d.enable_timing_stats d.jac_structure_time += toq()    
     
     @assert length(d.jac_I) == length(d.jac_J) == (start - 1) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
+    @show "end jac_structure"
     return d.jac_I, d.jac_J
 end
 
@@ -356,7 +357,7 @@ function MathProgBase.hesslag_structure(d::TapeNLPEvaluator)
     @timing true d.hesslag_structure_time += toq()
    
     @assert d.laghess_nnz == length(d.laghess_J) == length(d.laghess_I) == nz
-    # @show "end hesslag_structure"
+    @show "end hesslag_structure"
     return  d.laghess_I, d.laghess_J
 end
 

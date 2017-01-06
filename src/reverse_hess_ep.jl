@@ -327,19 +327,19 @@ function hess_struct_recovery{I}(bhi::Vector{Vector{I}}, idxmap::Vector{I}, nvar
 
     #postprocess non-repeated
     mergedindices = zeros(I,length(hh_I))
-    mergednnz = [0]
+    @inbounds mergednnz = [0]
     mergedmap = zeros(I,length(hh_I))
     function combine(idx1,idx2)
-        if mergedmap[idx1] == 0 && mergedmap[idx2] != 0
-            mergednnz[1] += 1
-            mergedmap[idx1] = idx2
-            mergedindices[mergednnz[1]] = idx1
+        @inbounds if mergedmap[idx1] == 0 && mergedmap[idx2] != 0
+            @inbounds mergednnz[1] += 1
+            @inbounds mergedmap[idx1] = idx2
+            @inbounds mergedindices[mergednnz[1]] = idx1
             return idx2
         else
-            @assert mergedmap[idx2] == 0
-            mergednnz[1] += 1
-            mergedmap[idx2] = idx1
-            mergedindices[mergednnz[1]] = idx2
+            @inbounds @assert mergedmap[idx2] == 0
+            @inbounds mergednnz[1] += 1
+            @inbounds mergedmap[idx2] = idx1
+            @inbounds mergedindices[mergednnz[1]] = idx2
             return idx1
         end
     end
@@ -351,26 +351,26 @@ function hess_struct_recovery{I}(bhi::Vector{Vector{I}}, idxmap::Vector{I}, nvar
     append!(h_J, zeros(nnz_non_repeat))
 
     for row in 1:nvar
-        for pos in Hmat.colptr[row]:(Hmat.colptr[row+1]-1)
-            col = Hmat.rowval[pos]
-            origidx = Hmat.nzval[pos] # this is the original index of this element
-            idxmap[origidx] = pos
-            h_I[start] = row
-            h_J[start] = col
+        @inbounds for pos in Hmat.colptr[row]:(Hmat.colptr[row+1]-1)
+            @inbounds col = Hmat.rowval[pos]
+            @inbounds origidx = Hmat.nzval[pos] # this is the original index of this element
+            @inbounds idxmap[origidx] = pos
+            @inbounds h_I[start] = row
+            @inbounds h_J[start] = col
             start += 1
         end
     end
 
-    for k in 1:mergednnz[1]
-        origidx = mergedindices[k]
-        mergedwith = mergedmap[origidx]
-        @assert idxmap[origidx] == 0
-        @assert idxmap[mergedwith] != 0
-        idxmap[origidx] = idxmap[mergedwith]
+    @inbounds for k in 1:mergednnz[1]
+        @inbounds origidx = mergedindices[k]
+        @inbounds mergedwith = mergedmap[origidx]
+        @inbounds @assert idxmap[origidx] == 0
+        @inbounds @assert idxmap[mergedwith] != 0
+        @inbounds idxmap[origidx] = idxmap[mergedwith]
     end
 
     for i in 1:nnz_original
-        @assert idxmap[i] != 0
+         @inbounds @assert idxmap[i] != 0
     end
 
     # @assert start - pre  - 1 == nz "$start $pre $(nz)"
@@ -1007,7 +1007,7 @@ end
 
     fill!(H,0)
     for i = 1:nnz
-        H[idxmap[i]] += HH[i]
+        @inbounds H[idxmap[i]] += HH[i]
     end
 
     #@timing tape.enable_timing_stats tape.ep_recovery_time += toq()
