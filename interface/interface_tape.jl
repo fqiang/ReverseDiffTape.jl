@@ -1,5 +1,4 @@
 #tape interface
-
 module TapeInterface
 
 using ReverseDiffTape
@@ -92,6 +91,8 @@ type TapeNLPEvaluator <: MathProgBase.AbstractNLPEvaluator
     jac_I::Vector{Int}
     jac_J::Vector{Int}
     jac_nnz::Int
+    jac_idxmap::Vector{Int}
+    JJ::Vector{Float64}
 
     laghess_I::Vector{Int}
     laghess_J::Vector{Int}
@@ -131,7 +132,7 @@ function TapeNLPEvaluator(nlpe::MathProgBase.AbstractNLPEvaluator,numVar,numCons
         -1, #init
         with_timing,
         
-        Vector{Int}(), Vector{Int}(),-1, #Jacobian
+        Vector{Int}(), Vector{Int}(),-1, Vector{Int}(), Vector{Float64}(), #Jacobian
         Vector{Int}(), Vector{Int}(),-1, #Hessian
 
         Vector{Float64}(),Vector{Float64}(),Vector{Float64}(), #working array
@@ -238,8 +239,11 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     resize!(d.vals, d.lag_tt.nnode)
     resize!(d.imm, d.lag_tt.immlen)
 
-    resize!(d.jac_I,(d.lag_tt.nvnode - obj_nvnode))
-    resize!(d.jac_J,(d.lag_tt.nvnode - obj_nvnode))    
+    # resize!(d.jac_I,(d.lag_tt.nvnode - obj_nvnode))
+    # resize!(d.jac_J,(d.lag_tt.nvnode - obj_nvnode))
+    resize!(d.JJ,(d.lag_tt.nvnode - obj_nvnode))    
+    resize!(d.jac_idxmap, (d.lag_tt.nvnode - obj_nvnode))
+    fill!(d.jac_idxmap,0)
 
     @show "end initialize "
     d.init = 1  #set initialized 
@@ -290,7 +294,12 @@ end
 
 function MathProgBase.jac_structure(d::TapeNLPEvaluator)
     @assert d.jac_nnz == -1
-    @assert length(d.jac_I) == length(d.jac_J)
+    @assert length(d.jac_I) == length(d.jac_J) == 0
+    
+    nnz_repeat = length(d.JJ)
+    II = Vector{Int}(nnz_repeat)
+    JJ = Vector{Int}(nnz_repeat)
+
     # @timing d.enable_timing_stats tic()
     tt = d.lag_tt.tt
     start = 1
@@ -298,15 +307,70 @@ function MathProgBase.jac_structure(d::TapeNLPEvaluator)
         # @inbounds tt = d.constr_tt[i].tt
         @inbounds ts = d.ttstarts[i+1]
         @inbounds te = d.ttends[i+1]
-        nz = grad_structure(ts, te, tt, start, d.jac_J)
-        @inbounds fill!(sub(d.jac_I, start:(start+nz-1)),i) 
+        nz = grad_structure(ts, te, tt, start, JJ)
+        @inbounds fill!(sub(II, start:(start+nz-1)),i) 
         start += nz
     end
-    d.jac_nnz = length(d.jac_I)
-    # @timing d.enable_timing_stats d.jac_structure_time += toq()    
+    @assert (start - 1) == nnz_repeat
+    @assert length(II) == length(JJ) == length(d.JJ) == (start - 1) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
     
-    @assert length(d.jac_I) == length(d.jac_J) == (start - 1) "$(tt_i.nzg) $(tt_i.nvnode) $(length(d.jac_J)) $(length(d.jac_I))"
-    @show "end jac_structure"
+    #postprocess non-repeated
+    mergedindices = zeros(Int,nnz_repeat)
+    @inbounds mergednnz = [0]
+    mergedmap = zeros(Int,nnz_repeat)
+    function combine(idx1,idx2)
+        # @show idx1, idx2
+        @inbounds if mergedmap[idx1] == 0 && mergedmap[idx2] != 0
+            @assert false
+            @inbounds mergednnz[1] += 1
+            @inbounds mergedmap[idx1] = idx2
+            @inbounds mergedindices[mergednnz[1]] = idx1
+            return idx2
+        else
+            @inbounds @assert mergedmap[idx2] == 0
+            @inbounds mergednnz[1] += 1
+            @inbounds mergedmap[idx2] = idx1
+            @inbounds mergedindices[mergednnz[1]] = idx2
+            return idx1
+        end
+    end
+    
+    @assert length(d.jac_I) == length(d.jac_J) == 0
+    Jmat = sparse(II, JJ, [i for i in 1:length(JJ)], d.numConstr, MathProgBase.numvar(d.jd.m), combine)
+    
+    nnz_non_repeat = length(Jmat.nzval)
+    pre = length(d.jac_I)
+    start = pre + 1
+    append!(d.jac_I, zeros(Int,nnz_non_repeat))
+    append!(d.jac_J, zeros(Int,nnz_non_repeat))
+
+    @assert length(d.jac_idxmap) == nnz_repeat
+    for col in 1:MathProgBase.numvar(d.jd.m)
+        @inbounds for pos in Jmat.colptr[col]:(Jmat.colptr[col+1]-1)
+            @inbounds row = Jmat.rowval[pos]
+            @inbounds origidx = Jmat.nzval[pos] # this is the original index (on JJ) of this element
+            @inbounds d.jac_idxmap[origidx] = pos
+            @inbounds d.jac_I[start] = row
+            @inbounds d.jac_J[start] = col
+            start += 1
+        end
+    end
+
+    @inbounds for k in 1:mergednnz[1]
+        @inbounds origidx = mergedindices[k]
+        @inbounds mergedwith = mergedmap[origidx]
+        @inbounds @assert d.jac_idxmap[origidx] == 0
+        @inbounds @assert d.jac_idxmap[mergedwith] != 0
+        @inbounds d.jac_idxmap[origidx] = d.jac_idxmap[mergedwith]
+    end
+
+    for i in 1:nnz_repeat
+        @inbounds @assert d.jac_idxmap[i] != 0
+    end
+
+    d.jac_nnz = nnz_non_repeat
+    
+    # @show "end jac_structure"
     return d.jac_I, d.jac_J
 end
 
@@ -321,12 +385,19 @@ function MathProgBase.eval_jac_g(d::TapeNLPEvaluator, J, x)
         @inbounds ts = d.ttstarts[i+1]
         @inbounds te = d.ttends[i+1]
         # @timing d.enable_timing_stats tic()
-        nz = grad_reverse(ts,te,tt,x,d.pvals,d.vals,d.stk,d.imm,j,J)
+        nz = grad_reverse(ts,te,tt,x,d.pvals,d.vals,d.stk,d.imm,j,d.JJ)
         j += nz
         # @timing d.enable_timing_stats d.eval_jac_g_time += toq()
     end
-    @assert j-1 == d.jac_nnz "$j $(d.jac_nnz)"
-    return
+    @assert (j-1) == length(d.JJ) "$j $(length(d.JJ)) $(d.jac_nnz)"
+
+    nnz = length(d.JJ)
+    fill!(J,0)
+    for i = 1:nnz
+        @inbounds J[d.jac_idxmap[i]] += d.JJ[i]
+    end
+
+    nothing
 end
 
 function MathProgBase.eval_hesslag_prod(
