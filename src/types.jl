@@ -50,7 +50,7 @@ end
 type Tape{I,V}
     tt::Vector{I}
     tr::Vector{I}
-    maxoperands::I
+    stklen::I
     nvar::I
     nvnode::I
     nnode::I
@@ -69,9 +69,9 @@ type Tape{I,V}
     ep_findnz::V
     ep_n::I
 
-    function Tape(tt::Vector{I}, tr::Vector{I}, mxn::I, gnvar::I, vnodes::I, nnodes::I, immlen::I, depth::I; with_timing=false, with_debug=false)
+    function Tape(tt::Vector{I}, tr::Vector{I}, stklen::I, gnvar::I, vnodes::I, nnodes::I, immlen::I, depth::I; with_timing=false, with_debug=false)
         tape = new(
-            tt, tr, mxn, gnvar, vnodes, nnodes, immlen, depth,
+            tt, tr, stklen, gnvar, vnodes, nnodes, immlen, depth,
             
             # -one(I),      #grad indicator
              
@@ -90,7 +90,8 @@ end
 function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
     @assert length(tr) == 0
     idx = one(I)
-    mxn = one(I)
+    mx_stklen = one(I)
+    stklen = zero(I)
     mxn_times = one(I)
     vmax = zero(I)
     vnodes = zero(I)
@@ -108,14 +109,15 @@ function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
             n[TYPE_V] += 1
             vmax = max(vmax, tt[idx+1])
             vnodes += 1
+            stklen +=1
             idx += 3
         elseif ntype == TYPE_O
             n[TYPE_O] +=1
             @assert tt[idx+3] != 0
-            mxn = max(mxn,tt[idx+3])
             if OP[tt[idx+2]]==:* 
                 mxn_times = max(mxn_times,tt[idx+3])
             end
+            stklen -= tt[idx+3]-1
             idx += 5
         elseif ntype == TYPE_O1
             n[TYPE_O1] += 1
@@ -127,12 +129,14 @@ function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
             n[TYPE_O3] += 1
             vmax = max(vmax,tt[idx+4])
             vnodes += 1
+            stklen += 1
             idx += 6
 
         elseif ntype == TYPE_O4
             n[TYPE_O4] += 1
             vmax = max(vmax,tt[idx+4])
             vnodes += 1
+            stklen += 1
             idx += 6
 
         elseif ntype == TYPE_O5
@@ -150,11 +154,13 @@ function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
             n[TYPE_O7] += 1
             vmax = max(vmax,tt[idx+3])
             vnodes += 1
+            stklen += 1
             idx += 5
         else
             @assert false
         end
         # @show vmax
+        mx_stklen = max(mx_stklen, stklen)
     end
     @assert idx == length(tt) + 1
     @assert gnvar >= vmax && sum(n) == nnodes
@@ -239,14 +245,14 @@ function tape_analysize{I}(tt::Vector{I}, tr::Vector{I}, gnvar::I)
     push!(tr,pop!(istk))
     @assert length(tr) == nnodes
     
-    # @show nid, mxn, gnvar, vnodes, nnodes, immlen
-    return nid, mxn, gnvar, vnodes, nnodes, immlen
+    # @show nid, mxn, gnvar, vnodes, nnodes, immlen, stklen, mx_stklen
+    return nid, mx_stklen, gnvar, vnodes, nnodes, immlen
 end
 
 function getMaxWorkingSize{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::Vector{Tape{I,V}})
     mx_vallen = max(obj_tt.nnode,lag_tt.nnode)
     mx_depth  = max(obj_tt.depth,lag_tt.depth)
-    mx_ops    = max(obj_tt.maxoperands,lag_tt.maxoperands)
+    mx_stklen    = max(obj_tt.stklen,lag_tt.stklen)
     mx_immlen = max(obj_tt.immlen,lag_tt.immlen)
     # @show mx_vallen, mx_depth, mx_ops, mx_immlen, length(obj_tt.vals), length(obj_tt.stk), length(obj_tt.imm)
 
@@ -254,7 +260,7 @@ function getMaxWorkingSize{I,V}(obj_tt::Tape{I,V},lag_tt::Tape{I,V}, cons_tt::Ve
         mx_immlen = max(mx_immlen,cons_tt[i].immlen)
         mx_vallen = max(mx_vallen,cons_tt[i].nnode)
         mx_depth = max(mx_depth,cons_tt[i].depth)
-        mx_ops = max(mx_ops,cons_tt[i].maxoperands)
+        mx_ops = max(mx_ops,cons_tt[i].stklen)
     end
     return mx_vallen, mx_depth, mx_ops, mx_immlen
 end
@@ -284,8 +290,8 @@ function tapeBuilderNoHess{I,V}(expr::Expr, pvals::Vector{V}, gnvar::I)
     tt = Vector{I}()
     tr = Vector{I}()
     tape_builder(expr,tt, pvals,depth)
-    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
-    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, depth[1])
+    nid, stklen, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, stklen, gnvar, vnodes, nnodes, immlen, depth[1])
     return tape
 end
 
@@ -300,7 +306,7 @@ function appendMultParam{I,V}(tape::Tape{I,V},pholder::Vector{I})
 end
 
 function appendTapeMultParam{I,V}(to::Tape{I,V}, from::Tape{I,V}, pvals::Vector{V},ttstarts::Vector{I},ttends::Vector{I},trends::Vector{I},pholder::Vector{I})
-    to.maxoperands = max(to.maxoperands,from.maxoperands)
+    to.stklen = max(to.stklen,from.stklen)
     @assert to.nvar == from.nvar
     tt = to.tt
     tr = to.tr
@@ -333,8 +339,8 @@ function buildSumTape{I,V}(tt::Vector{I}, mx_depth::I, n::I, gnvar::I, hs::HessS
         push!(tt, TYPE_O)
         mx_depth += 1
     end
-    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
-    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, mx_depth)
+    nid, stklen, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, stklen, gnvar, vnodes, nnodes, immlen, mx_depth)
     resizeHessStorage(hs,nid,gnvar)
     return tape
 end
@@ -377,8 +383,8 @@ function mergeTapes{I,V}(obj_tape::Tape{I,V}, tapes::Vector{Tape{I,V}}, pvals::V
         push!(tt, TYPE_O)
     end
 
-    nid, mxn, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
-    tape = Tape{I,V}(tt, tr, mxn, gnvar, vnodes, nnodes, immlen, mx_depth)
+    nid, stklen, gnvar, vnodes, nnodes, immlen = tape_analysize(tt, tr, gnvar)
+    tape = Tape{I,V}(tt, tr, stklen, gnvar, vnodes, nnodes, immlen, mx_depth)
     resizeHessStorage(hs,nid,gnvar)
 
     return tape
@@ -913,4 +919,10 @@ end
 #     @show " with ep1 data ", tb_ep1, " bytes "
 
 #     return tb+tb_ep1
+# end
+# macro inbounding(args)
+#     # @inbounding args
+#     return quote 
+#         $(esc(args)) 
+#     end
 # end

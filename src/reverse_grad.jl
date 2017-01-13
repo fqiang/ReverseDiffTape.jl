@@ -1,7 +1,3 @@
-
-# forward pass on the tape tt, to build ss stack
-
-#forward pass on the scalar function
 function forward_pass_1ord{I,V}(ttstart::I, ttend::I, tt::Vector{I}, vvals::Vector{V}, pvals::Vector{V}, stk::Vector{V}, vals::Vector{V})
     idx = ttstart
     vallen = zero(I)

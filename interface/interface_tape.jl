@@ -235,7 +235,7 @@ function MathProgBase.initialize(d::TapeNLPEvaluator, requested_features::Vector
     @assert (d.lag_start + d.numConstr - 1) == length(d.pvals)  "$(length(d.pvals)) $(d.numConstr) $(d.lag_start)"
     #end building single lag
 
-    resize!(d.stk, d.lag_tt.depth + d.lag_tt.maxoperands)
+    resize!(d.stk, d.lag_tt.stklen)
     resize!(d.vals, d.lag_tt.nnode)
     resize!(d.imm, d.lag_tt.immlen)
 
