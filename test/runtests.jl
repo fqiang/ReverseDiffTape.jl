@@ -11,15 +11,6 @@ global y2 = 2.2
 global y3 = 3.3
 global y4 = 4.4
 
-function count(h)
-	c = 0
-	for (i,iset) in h
-		for j in iset
-			c+=1
-		end
-	end
-	return c
-end
 
 function to_dense_array(sparse)
 	dense = Vector{Float64}(length(sparse))
@@ -28,6 +19,28 @@ function to_dense_array(sparse)
 		dense[i] = sparse[i]
 	end
 	return dense
+end
+
+function SparseMatrix.sparse(I,J,V, M, N;keepzeros=false)
+    if(!keepzeros)
+        return sparse(I,J,V,M,N)
+    else
+        full = sparse(I,J,ones(Float64,length(I)),M,N)
+        actual = sparse(I,J,V,M,N)
+        fill!(full.nzval,0.0)
+
+        for c = 1:N
+            for i=nzrange(actual,c)
+                r = actual.rowval[i]
+                v = actual.nzval[i]
+                if(v!=0)
+                    full[r,c] = v
+                end
+            end  
+            # full.nzval[crange] = actual.nzval[crange] 
+        end        
+        return full
+    end
 end
 
 ## Test for forward function evaluation
@@ -170,12 +183,9 @@ facts("Reverse gradient") do
 	end
 end
 
-### Version 2 - reimplement Hessian EP
-include("runtest_ep2.jl")
-
-
-### Version 1 - implementation 
 include("runtest_ep.jl")
+### Version 2 - reimplement Hessian EP
+# include("runtest_ep2.jl")
 
 
 FactCheck.exitstatus()
