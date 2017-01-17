@@ -2,16 +2,17 @@
 import Lazy
 using Base.Meta
 using Calculus
-using NaNMath; nm=NaNMath
 
 #Operator overloading function for AD types
 const B_OP_START = 1
 const OP = Array{Symbol,1}([:+,:-,:*,:/,:^])
-const S_TO_OC = Dict{Symbol,OP_TYPE}()
-const S_TO_DIFF = Dict{Symbol,Array{Any,1}}()
-const S_TO_DIFF_FLAG = Dict{Symbol,Array{Bool,1}}()
 const B_OP_END = length(OP)
 const U_OP_START = B_OP_END + 1
+
+const S_TO_OC = Dict{Symbol,Int}()
+const S_TO_DIFF = Dict{Symbol,Array{Any,1}}()
+const S_TO_DIFF_FLAG = Dict{Symbol,Array{Bool,1}}()
+
 
 
 ##########################################################################################
@@ -121,58 +122,51 @@ end
 ## one argument functions
 switchblock = Expr(:block)
 for i = U_OP_START:U_OP_END
-    ex = :(@inbounds return $(OP[i])(v))
-    push!(switchblock.args,quot(OP[i]),ex)
+    o = OP[i]
+    ex = :(return $(o)(v))
+    push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-@eval function eval_0ord{V}(s::Symbol, v::V)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
+@eval @inline function eval_0ord{V}(s::Symbol, v::V)
     if s==:-
         return -v
+    else
+        $switchexpr
     end
-
-    $switchexpr
 end
 
-# 2+ argument functions
+# 2 argument functions
 switchblock = Expr(:block)
 
 for i = B_OP_START:B_OP_END
     o = OP[i]
     ex = Expr(:block)
-    if(o==:+ || o==:* || o ==:^)
-        continue
-    else
-        ex = :(@inbounds return $(o)(v[i],v[i+1]))
-    end
+    push!(ex.args,parse("return $(o)(l,r)"))
+    # ex = :(@inbounds return $(o)(l,r))
     push!(switchblock.args,quot(o),ex)
 end
 
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
-@eval @inline function eval_0ord{I,V}(s::Symbol, v::Array{V,1}, i::I, e::I)
-    # @show s,v
-    if s == :+
-        counter = zero(V)
-        for j in i:e
-            @inbounds counter += v[j]
-        end
-        return counter
-    elseif s == :*
-        counter = v[i]
-        for j = i+1:e
-            @inbounds counter *= v[j]
-        end
-        return counter
-    elseif s == :^
-        @inbounds exponent = v[i+1]
-        @inbounds base = v[i]
-        if exponent == 2.0
-            return base*base
-        else
-            return base^exponent
-        end
-    end
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
+@eval @inline function eval_0ord{V}(s::Symbol,l::V,r::V)
     $switchexpr
 end
+
+# 2+ argument functions
+@eval @inline function eval_0ord{I,V}(s::Symbol, v::Vector{V}, i::I, e::I)
+    # @show s,v
+    ret = v[i]
+    if s==:+
+        @simd for j = i+1:e
+            @inbounds ret +=  v[j]
+        end
+    else
+        @simd for j = i+1:e
+            @inbounds ret *=  v[j]
+        end
+    end
+    return ret
+end
+
 
 ##########################################################################################
 #
@@ -187,85 +181,74 @@ for i = U_OP_START:U_OP_END
     dx = replace_sym(:x,dx,"v")
     # @show dx
     ex = Expr(:block)
-    push!(ex.args,parse("@inbounds imm[imm_i]=$(dx)"))
-    push!(ex.args,:(@inbounds return $(o)(v)))
+    push!(ex.args,parse("@inbounds imm[1]=$(dx)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
-@eval @inline function eval_1ord{I,V}(s::Symbol,v::V,imm::Array{V,1}, imm_i::I)
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(Symbol("@switch"))),:s,switchblock)
+@eval @inline function eval_1ord{V}(s::Symbol,v::V,imm::Vector{V})
     if s==:-
-        @inbounds imm[imm_i] = -one(V)
-        return -v
+        @inbounds imm[1] = -one(V)
+    else
+        $switchexpr
     end
-    
-    $switchexpr
+    nothing
 end
 
-# 2+ argument functions
+# 2 argument functions
 switchblock = Expr(:block)
 
 for i = B_OP_START:B_OP_END
     o = OP[i]
     ex = Expr(:block)
-    if(o==:+ || o==:* || o == :^)
-        continue
-    else
-        (dx,dy) = S_TO_DIFF[o]
-        dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
-        dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
-        # @show dx, dy
-        ex = Expr(:block)
-        push!(ex.args,parse("@inbounds imm[imm_i]=$(dx)"))
-        push!(ex.args,parse("@inbounds imm[imm_i+1]=$(dy)"))
-        push!(ex.args,:(@inbounds return $(o)(v[i],v[i+1])))
-    end
+    
+    (dx,dy) = S_TO_DIFF[o]
+    dx = replace_sym(:y,replace_sym(:x,dx,"l"),"r")
+    dy = replace_sym(:y,replace_sym(:x,dy,"l"),"r")
+    # @show dx, dy
+    ex = Expr(:block)
+    push!(ex.args,parse("@inbounds imm[1]=$(dx)"))
+    push!(ex.args,parse("@inbounds imm[2]=$(dy)"))
     push!(switchblock.args,quot(o),ex)
 end
 
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
+# @show switchexpr
+@eval @inline function eval_1ord{V}(s::Symbol,l::V, r::V, imm::Vector{V})
+    if s==:^
+        exponent::V = r
+        base::V = l
+        t0 = l<0.0?0.0:log(l)
+        t = l^r
+        if exponent == 2.0
+            @inbounds imm[1] = 2.0*l
+            @inbounds imm[2] = t*t0 
+        else
+            @inbounds imm[1] = r*l^(r-1.0)
+            @inbounds imm[2] = t*t0
+        end
+    else
+        $switchexpr
+    end
+    nothing
+end
 
-
-@eval @inline function eval_1ord{I,V}(s::Symbol,v::Array{V,1}, i::I, e::I, imm::Array{V,1}, imm_i::I)
+@eval @inline function eval_1ord{I,V}(s::Symbol, v::Vector{V},i::I,e::I,imm::Vector{V})
     if s==:+
-        ret = zero(V)
-        @simd for j=i:e
-            @inbounds imm[imm_i] = one(V)
-            imm_i += 1
-            @inbounds ret += v[j]
-        end
-        return ret
-    elseif s==:*
-        @inbounds ret = v[i]
-        @simd for j=i+1:e
-            @inbounds ret *= v[j] 
-        end
+        # @inbounds imm[1:(e-i)+1] = one(V)
+    else
+        imm_i = zero(I)
         @simd for j0=i:e
             c=one(V)
             @simd for j1=i:e
-                if(j0!=j1)
-                    @inbounds c*=v[j1]
+                if j0!=j1
+                    @inbounds c *= v[j1]
                 end
             end
+            imm_i += 1
             @inbounds imm[imm_i] = c
-            imm_i+=1
-        end
-        return ret
-    elseif s==:^
-        @inbounds exponent = v[i+1]
-        @inbounds base = v[i]
-        if exponent == 2.0
-            @inbounds imm[imm_i] = 2.0*base
-            t = base*base
-            @inbounds imm[imm_i+1] = base<=0.0?0.0:t*log(base) #not sure if this is way to handle log(-negative)
-            return t
-        else
-            @inbounds imm[imm_i] = exponent*base^(exponent-1.0)
-            t = base^exponent
-            @inbounds imm[imm_i+1] = base<=0.0?0.0:t*log(base)
-            return t
         end
     end
-    $switchexpr
+    nothing
 end
 
 ##########################################################################################
@@ -282,74 +265,80 @@ for i = U_OP_START:U_OP_END
     dxx = replace_sym(:x,dxx,"v")
     # @show dx, dxx
     ex = Expr(:block)
-    push!(ex.args,parse("@inbounds imm[imm_i] = $(dx)"))
-    push!(ex.args,parse("@inbounds imm[imm_i+1] = $(dxx)"))
-    push!(ex.args,:(@inbounds return 2,$(o)(v)))
+    push!(ex.args,parse("@inbounds imm[1] = $(dx)"))
+    push!(ex.args,parse("@inbounds imm[2] = $(dxx)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(symbol("@switch"))),:s,switchblock)
-@eval @inline function eval_2ord{I,V}(s::Symbol,v::V,imm::Array{V,1}, imm_i::I)
+switchexpr = Expr(:macrocall,Expr(:.,:Lazy,quot(Symbol("@switch"))),:s,switchblock)
+@eval @inline function eval_2ord{V}(s::Symbol,v::V,imm::Vector{V})
     if s==:-
-        @inbounds imm[imm_i] = -one(V)
-        @inbounds imm[imm_i+1] = zero(V)
-        return 2,-v
+        @inbounds imm[1] = -one(V)
+        @inbounds imm[2] = zero(V)
+    else
+        $switchexpr
     end
-
-    $switchexpr
+    nothing
 end
 
-# 2+ argument function
+# 2 argument function
 switchblock = Expr(:block)
 for i = B_OP_START:B_OP_END
     o = OP[i]
     ex = Expr(:block)
-    if(o==:+ || o==:- || o==:* || o == :^)
-        continue
-    else
-        (dx,dy,dxx,dxy,dyy) = S_TO_DIFF[o]
-        dx = replace_sym(:y,replace_sym(:x,dx,"v[i]"),"v[i+1]")
-        dy = replace_sym(:y,replace_sym(:x,dy,"v[i]"),"v[i+1]")
-        dxx = replace_sym(:y,replace_sym(:x,dxx,"v[i]"),"v[i+1]")
-        dxy = replace_sym(:y,replace_sym(:x,dxy,"v[i]"),"v[i+1]")
-        dyy = replace_sym(:y,replace_sym(:x,dyy,"v[i]"),"v[i+1]")
-        # @show dx
-        # @show dy
-        # @show dxx
-        # @show dyy
-        # @show dxy
-        ex = Expr(:block)
-        push!(ex.args,parse("@inbounds imm[imm_i] = $(dx)"))
-        push!(ex.args,parse("@inbounds imm[imm_i+1] = $(dy)"))
-        push!(ex.args,parse("@inbounds imm[imm_i+2] = $(dxx)"))
-        push!(ex.args,parse("@inbounds imm[imm_i+3] = $(dxy)"))
-        push!(ex.args,parse("@inbounds imm[imm_i+4] = $(dyy)"))
-        push!(ex.args,:(@inbounds return 5,$(o)(v[i],v[i+1])))
-    end
+    (dx,dy,dxx,dxy,dyy) = S_TO_DIFF[o]
+    dx = replace_sym(:y,replace_sym(:x,dx,"l"),"r")
+    dy = replace_sym(:y,replace_sym(:x,dy,"l"),"r")
+    dxx = replace_sym(:y,replace_sym(:x,dxx,"l"),"r")
+    dxy = replace_sym(:y,replace_sym(:x,dxy,"l"),"r")
+    dyy = replace_sym(:y,replace_sym(:x,dyy,"l"),"r")
+    # @show dx
+    # @show dy
+    # @show dxx
+    # @show dyy
+    # @show dxy
+    ex = Expr(:block)
+    push!(ex.args,parse("@inbounds imm[1] = $(dx)"))
+    push!(ex.args,parse("@inbounds imm[2] = $(dy)"))
+    push!(ex.args,parse("@inbounds imm[3] = $(dxx)"))
+    push!(ex.args,parse("@inbounds imm[4] = $(dxy)"))
+    push!(ex.args,parse("@inbounds imm[5] = $(dyy)"))
     push!(switchblock.args,quot(o),ex)
 end
-switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchblock)
+switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(Symbol("@switch"))), :s,switchblock)
+@eval @inline function eval_2ord{V}(s::Symbol,l::V, r::V, imm::Vector{V})
+    if s == :^
+        exponent = r
+        base = l
+        if exponent == 2.0
+            t = base*base
+            t2 = base<0.0?0.0:log(base)
+            @inbounds imm[1] = 2.0*base
+            @inbounds imm[2] = t*t2
+            @inbounds imm[3] = 2.0
+            @inbounds imm[4] = base + 2.0*base*t2
+            @inbounds imm[5] = t*t2*t2
+        else
+            t = base^exponent
+            t2 = base<0.0?0.0:log(base)
+            t3 = base^(exponent-1.0)
+            @inbounds imm[1] = exponent*base^t3
+            @inbounds imm[2] = t*t2
+            @inbounds imm[3] = exponent*(exponent-1.0)*base^(exponent-2.0)
+            @inbounds imm[4] = t3 + exponent*t3*t2
+            @inbounds imm[5] = t*t2*t2
+        end
+    else
+        $switchexpr
+    end
+    nothing
+end
 
-@eval @inline function eval_2ord{I,V}(s::Symbol,v::Array{V,1},i::I,e::I,imm::Array{V,1},imm_i::I)
-    
-    if(s==:+)
-        @inbounds ret = v[i]
-        @simd for j=i+1:e
-            @inbounds ret += v[j]
-        end
-        return 0,ret
-        #do not put second order , since all zeros
-        #do not put first order , since all one
-    elseif(s==:-)
-        @inbounds ret = v[i]
-        @inbounds ret -= v[i+1]
-        return 0, ret
-    elseif(s==:*)
-        ret = one(V)
-        @simd for j=i:e
-            @inbounds ret *= v[j]
-        end
+@eval @inline function eval_2ord{I,V}(s::Symbol,v::Vector{V},i::I,e::I,imm::Vector{V})
+    if s==:+
+        # @inbounds imm[1:(e-i)+1] = one(V)
+    else
         #first order    
-        imm_off = zero(I)
+        imm_i = zero(I)
         for j0=i:e
             f_ord = one(V)
             for j1=i:j0-1
@@ -358,8 +347,8 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
             for j1=j0+1:e
                 @inbounds f_ord *= v[j1]
             end
-            @inbounds imm[imm_off+imm_i] = f_ord
-            imm_off += 1
+            imm_i += 1
+            @inbounds imm[imm_i] = f_ord
         end
         #second order
         for j0=i:e
@@ -374,39 +363,12 @@ switchexpr = Expr(:macrocall, Expr(:.,:Lazy,quot(symbol("@switch"))), :s,switchb
                 for j3=j1+1:e
                     @inbounds s_ord *= v[j3]
                 end
-                @inbounds imm[imm_off+imm_i] = s_ord
-                imm_off+=1
+                imm_i+=1
+                @inbounds imm[imm_i] = s_ord
             end
         end
-        # n = e-i+1
-        # @show n, imm_off, round(I,n+(n-1)*n/2)
-        assert(imm_off==round(I,(e-i+1)+((e-i+1)-1)*(e-i+1)/2))
-        return imm_off, ret
-    elseif(s==:^)
-        @inbounds exponent = v[i+1]
-        @inbounds base = v[i]
-        if exponent == 2.0
-            t = base*base
-            t2 = base<=0.0?0.0:log(base)
-            @inbounds imm[imm_i] = 2.0*base
-            @inbounds imm[imm_i+1] = t*t2
-            @inbounds imm[imm_i+2] = 2.0
-            @inbounds imm[imm_i+3] = base + 2.0*base*t2
-            @inbounds imm[imm_i+4] = t*t2*t2
-            return 5,t
-        else
-            t = base^exponent
-            t2 = base<=0.0?0.0:log(base)
-            t3 = base^(exponent-1.0)
-            @inbounds imm[imm_i] = exponent*base^t3
-            @inbounds imm[imm_i+1] = t*t2
-            @inbounds imm[imm_i+2] = exponent*(exponent-1.0)*base^(exponent-2.0)
-            @inbounds imm[imm_i+3] = t3 + exponent*t3*t2
-            @inbounds imm[imm_i+4] = t*t2*t2
-            return 5,t
-        end
     end
-    $switchexpr
+    nothing
 end
 ##########################################################################################
 
