@@ -1,0 +1,3 @@
+let n=$1
+let k=$2
+echo "include arrowhead.mod; include arrowhead${n}_${k}.dat" | ampl 

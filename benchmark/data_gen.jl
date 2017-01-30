@@ -95,6 +95,15 @@ function rand_set(n,k)
     return ret
 end
 
+function genArrowHead(N,K)
+	f = open(string("arrowhead",N,"_",K,".dat"),"w")
+	write(f, "reset data; \n")
+	write(f, string("data; \n"))
+	write(f, string("param n:=",N,"; \n"))
+	write(f, string("param k:=",K,"; \n"))
+	write(f,string("option solver ipopt; \n"))
+	write(f,string("solve; \n"))
+end
 
 function write_random_dat_ampl(N, K)
 	f = open(string("randset",N,"_",K,".dat"),"w")

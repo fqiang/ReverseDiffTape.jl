@@ -15,13 +15,20 @@ include("interface_tape.jl")
 using TapeInterface                            
 m = Model(solver=TapeSolver(IpoptSolver())) #creating TapeSolver instance
 ```
-* rest proceeds as the same of a normal JuMP model
+* Rest proceeds as the same of a normal JuMP model
 
 ```julia
 @variable(m, -100<=x[1:10]<=100)
 @NLobjective(m, Min, sum{ cos(sum{ x[i+j], j=1:3}) + sum{ (x[i] + x[j])^2, j=1:3} , i=1:7} )
 status = solve(m)
 ```
+
+# Benchmarking results
+
+The bencharmking results are presented in The 7th International Conference on Algorithmic Differentation, titled "On efficient Hessian computation using the edge pushing algorithm in Julia". 
+
+An improved performance results are submitted in the post-conference publication in Optimization Methods and Software. The results can be reproduced using scripts at [benchmark](https://github.com/fqiang/ReverseDiffTape.jl/tree/ad2016/benchmark) directory of this repository. 
+
 
 #References: 
 R.M. Gower and M.P. Mello. "A new framework for the computation of Hessians", Optimization Methods and Software 27-2, pp. 251–273, 2012. [paper](http://www.ime.unicamp.br/rel_pesq/2010/rp16-10.html)
