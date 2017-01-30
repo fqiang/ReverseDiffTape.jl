@@ -1,0 +1,4 @@
+#random_sparsity.run
+let n=$1
+let k=$2
+echo "include random_sparsity.mod; include randset${n}_${k}.dat" | ampl 

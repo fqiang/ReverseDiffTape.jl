@@ -1,0 +1,3 @@
+let m=$1
+let n=$2
+echo "include logmod.mod; include log${m}_${n}.dat;" | ampl

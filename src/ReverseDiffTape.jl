@@ -38,46 +38,5 @@ include("./func_eval.jl")
 include("./reverse_grad.jl")
 include("./reverse_hess_ep.jl")
 
-# warming up 
-# @printf "warming up ... \n"
-# imm = Vector{Float64}();
-# p = Vector{Float64}();
-# x = [1.1, 2.2, 3.3];
-# tape1 = Tape{Int,Float64}(imm=imm,with_timing=false, bh_type=1);
-# tape2 = Tape{Int,Float64}(imm=imm,with_timing=false, bh_type=2);
-# expr=parse("exp(x[1]+x[2]+x[3])*exp(x[1]*x[2]*x[3])")
-# tapeBuilder(expr,tape1,p)
-# tapeBuilder(expr,tape2,p)
-
-# @printf " feval \n"
-# # @time feval(tape::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-# feval(tape1::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-
-# @printf " grad_structure \n"
-# # @time grad_structure(tape::Tape{Int,Float64}); 
-# tape1.nzg = -one(Int)
-# grad_structure(tape1::Tape{Int,Float64}); 
-
-# @printf " grad_reverse \n"
-# # @time grad_reverse(tape::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-# grad_reverse(tape1::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-
-# @printf " hess_structure \n"
-# # @time hess_structure2(tape::Tape{Int,Float64});
-# reset_hess2(tape1::Tape{Int,Float64});
-# reset_hess3(tape2::Tape{Int,Float64})
-# hess_structure2(tape1::Tape{Int,Float64});
-# hess_structure3(tape2::Tape{Int,Float64})
-
-# @printf " hess_reverse \n"
-# prepare_reeval_hess2(tape1::Tape{Int,Float64});
-# prepare_reeval_hess3(tape2::Tape{Int,Float64})
-# hess_reverse2(tape1::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-# hess_reverse3(tape2::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-# # hess_reverse2(tape::Tape{Int,Float64},x::Vector{Float64},p::Vector{Float64});
-
-# @printf "end warming up ... \n"
-#
-
 
 end # module

@@ -13,7 +13,6 @@ end
 @inline function push_edge{I}(bhi::Vector{Vector{I}},to::I,from::I, nvar::I)
     # @show "push_edge - ",to," <--- ", from
     @inbounds push!(bhi[to],from)
-    # @inbounds push!(tape.bhv[to],0.0)
     if to <= nvar && from > nvar
         push_edge(bhi,from,to,nvar)
     end
@@ -1045,74 +1044,3 @@ function hess_reverse{I,V}(ts::I, te::I, tt::Vector{I},
     hess_recovery(hs.bhi, hs.bhv, hs.idxmap, hs.HH, hs.gnvar, start, H)
     nothing
 end
-
-
-
-
-
-# function handle_sum_node(tape::Tape{Int,Float64}, i_id::Int, n::Int, trlen::Int)
-#     @inbounds lvi = tape.bhi[i_id]
-#     @inbounds lvv = tape.bhv[i_id]
-#     tr = tape.tr
-
-#     for j = 1:length(lvi)
-#         @inbounds p_id = lvi[j]
-#         @inbounds w = lvv[j]
-
-#         if p_id == i_id  
-#             for j0=trlen-n+1:trlen
-#                 @inbounds ci_id = tr[j0]
-#                 update(tape,ci_id,ci_id,w)
-#                 for j1=j0+1:trlen
-#                     @inbounds cii_id = tr[j1]
-#                     update(tape,cii_id,ci_id,w)
-#                 end #j1 +=1
-#             end #j0+=1
-#         else #p_idx != i_idx
-#             for k=trlen-n+1:trlen
-#                 @inbounds ci_id = tr[k]
-#                 w_bar = w
-#                 if ci_id == p_id
-#                     w_bar = 2.0*w
-#                 end
-#                 update(tape,ci_id,p_id,w_bar)
-#             end
-#         end
-#     end
-# end
-
-# function separate(bh::Vector{Vector{mPair{Int,Float64}}})
-#     bhi = Vector{Vector{Int}}(length(bh))
-#     bhv = Vector{Vector{Float64}}(length(bh))
-
-#     for i = 1:length(bh)
-#         @inbounds lvi = bh[i]
-#         @inbounds bhi[i] = Vector{Int}(length(lvi))
-#         @inbounds bhv[i] = Vector{Float64}(length(lvi))
-#         @inbounds bhii = bhi[i]
-#         @inbounds bhvi = bhv[i]
-#         for j = 1:length(bhii)
-#             @inbounds bhii[j] = lvi[j].i
-#             @inbounds bhvi[j] = lvi[j].w
-#         end
-#     end
-#     return bhi, bhv
-# end
-
-# function recovery2(tape::Tape{Int,Float64}, bhi::Vector{Vector{Int}}, bhv::Vector{Vector{Float64}}, h::Vector{Float64}, nvar::Int, factor::Float64)
-#     #@timing tape.enable_timing_stats tic()
-#     nnz = zero(Int)
-#     for i = 1:nvar
-#         @inbounds bhii = bhi[i]
-#         @inbounds bhvi = bhv[i]
-#         for j = 1:length(bhii)
-#             @inbounds id = bhii[j]
-#             if id <= nvar
-#                 nnz += 1
-#                 @inbounds h[nnz] = factor*bhvi[j]
-#             end
-#         end
-#     end 
-#     #@assert (length(h) == nnz) length(h),nnz
-#     #@timing tape.enable_timing_stats tape.ep_recovery_time += toq()
-# end
