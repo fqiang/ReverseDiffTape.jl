@@ -27,7 +27,7 @@ status = solve(m)
 
 The bencharmking results are presented in The 7th International Conference on Algorithmic Differentation, titled "On efficient Hessian computation using the edge pushing algorithm in Julia". 
 
-An improved performance results are submitted in the post-conference publication in Optimization Methods and Software. The results can be reproduced using scripts at [benchmark](https://github.com/fqiang/ReverseDiffTape.jl/tree/ad2016/benchmark) directory of this repository. 
+An improved performance results are submitted in the post-conference publication in Optimization Methods and Software. The results can be reproduced using scripts at [benchmark](https://github.com/fqiang/ReverseDiffTape.jl/tree/master/benchmark) directory of this repository. 
 
 
 #References: 

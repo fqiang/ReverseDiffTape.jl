@@ -1,9 +1,9 @@
 Repository containing the benchmark tests for "On efficient Hessian computation using the edge pushing algorithm in Julia" by C.G. Petra, F. Qiang, M. Lubin and J. Huchette.
 
 # Pre-requsite to run the test
-Install JuMP and Ipopt from Julia
+First, install Julia-0.4.7 and then install JuMP from [ad2016 branch](https://github.com/fqiang/JuMP.jl/tree/ad2016) and also Ipopt.
 ```julia
-Pkg.add("JuMP");
+Pkg.clone("https://github.com/fqiang/JuMP.jl/tree/ad2016");
 Pkg.add("Ipopt");
 ```
 
